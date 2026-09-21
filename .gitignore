@@ -1,0 +1,38 @@
+# Java
+target/
+*.class
+.gradle/
+build/
+
+# Go
+bin/
+*.exe
+*.test
+coverage.out
+
+# Python (Phase 9)
+__pycache__/
+.venv/
+mlruns/
+
+# Node / Playwright
+node_modules/
+playwright-report/
+test-results/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!example.tfvars
+
+# Secrets and local config
+.env
+*.pem
+kubeconfig*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
