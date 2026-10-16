@@ -5,12 +5,17 @@ on:
     paths:
       - "services/telemetry-ingest/**"
       - "services/vehicle-sim/**"
+      # fleet-api's migrations are the schema the ingest integration test applies.
+      - "services/fleet-api/src/main/resources/db/migration/**"
+      - ".golangci.yml"
       - ".github/workflows/go-services.yml"
   push:
     branches: [main]
     paths:
       - "services/telemetry-ingest/**"
       - "services/vehicle-sim/**"
+      - "services/fleet-api/src/main/resources/db/migration/**"
+      - ".golangci.yml"
       - ".github/workflows/go-services.yml"
 
 permissions:
@@ -24,13 +29,17 @@ jobs:
   test:
     name: ${{ matrix.service }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
-      # Both services are reported separately, and one failing does not hide the
-      # other's result.
       fail-fast: false
       matrix:
-        service: [telemetry-ingest, vehicle-sim]
+        include:
+          # Coverage floors, not targets: they stop coverage sliding backwards.
+          # Raise them as the untested paths (main, shutdown, store) get covered.
+          - service: telemetry-ingest
+            min_coverage: 50
+          - service: vehicle-sim
+            min_coverage: 33
 
     defaults:
       run:
@@ -39,8 +48,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The Go version comes from the service's own go.mod, so the toolchain is
-      # declared in one place rather than duplicated in the pipeline.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -61,10 +68,35 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # -race catches data races between the vehicle goroutines; -count=1 stops Go
-      # from serving a cached pass from a previous run.
-      - name: Test
-        run: go test -race -count=1 ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          working-directory: services/${{ matrix.service }}
+
+      - name: Unit tests with coverage
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Enforce the coverage floor
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "coverage: ${total}% (floor ${{ matrix.min_coverage }}%)"
+          awk -v t="$total" -v m="${{ matrix.min_coverage }}" \
+            'BEGIN { if (t + 0 < m + 0) { print "coverage below the floor"; exit 1 } }'
+
+      - name: Upload the coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: services/${{ matrix.service }}/coverage.out
+          retention-days: 7
+
+      - name: Integration tests
+        # Only telemetry-ingest touches the database. vehicle-sim is a client and
+        # has nothing to integrate against.
+        if: matrix.service == 'telemetry-ingest'
+        run: go test -tags=integration -count=1 -timeout=10m ./...
 
       - name: Build the binary
         run: go build -trimpath -o /tmp/${{ matrix.service }} .
