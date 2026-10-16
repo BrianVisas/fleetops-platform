@@ -1,0 +1,70 @@
+name: go-services
+
+on:
+  pull_request:
+    paths:
+      - "services/telemetry-ingest/**"
+      - "services/vehicle-sim/**"
+      - ".github/workflows/go-services.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/telemetry-ingest/**"
+      - "services/vehicle-sim/**"
+      - ".github/workflows/go-services.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-services-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # Both services are reported separately, and one failing does not hide the
+      # other's result.
+      fail-fast: false
+      matrix:
+        service: [telemetry-ingest, vehicle-sim]
+
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Go version comes from the service's own go.mod, so the toolchain is
+      # declared in one place rather than duplicated in the pipeline.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          # Keyed on go.mod rather than go.sum: vehicle-sim has no dependencies,
+          # so it has no go.sum, and a missing cache path fails the step.
+          cache-dependency-path: services/${{ matrix.service }}/go.mod
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race catches data races between the vehicle goroutines; -count=1 stops Go
+      # from serving a cached pass from a previous run.
+      - name: Test
+        run: go test -race -count=1 ./...
+
+      - name: Build the binary
+        run: go build -trimpath -o /tmp/${{ matrix.service }} .
