@@ -1,0 +1,78 @@
+name: fleetops
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${DB_USER:-fleetops}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fleetops}
+      POSTGRES_DB: ${DB_NAME:-fleetops}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fleetops} -d ${DB_NAME:-fleetops}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  fleet-api:
+    build:
+      context: ../../services/fleet-api
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-fleetops}
+      DB_USER: ${DB_USER:-fleetops}
+      DB_PASSWORD: ${DB_PASSWORD:-fleetops}
+      SERVER_PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  telemetry-ingest:
+    build:
+      context: ../../services/telemetry-ingest
+    environment:
+      DB_URL: postgres://${DB_USER:-fleetops}:${DB_PASSWORD:-fleetops}@db:5432/${DB_NAME:-fleetops}
+      PORT: "8081"
+      DB_MAX_CONNS: "20"
+    ports:
+      - "8081:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+      # fleet-api owns the migrations, so ingest must not start until the tables
+      # exist - otherwise its first query fails against an empty schema.
+      fleet-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  vehicle-sim:
+    build:
+      context: ../../services/vehicle-sim
+    command:
+      - "-vehicles"
+      - "${SIM_VEHICLES:-10}"
+      - "-rate"
+      - "${SIM_RATE:-1}"
+      - "-fail-rate"
+      - "${SIM_FAIL_RATE:-0}"
+      - "-api"
+      - "http://fleet-api:8080"
+      - "-ingest"
+      - "http://telemetry-ingest:8081"
+    depends_on:
+      fleet-api:
+        condition: service_healthy
+      telemetry-ingest:
+        condition: service_healthy
+    # Started only with `--profile sim`, so `make up` gives a quiet system and
+    # `make sim` adds traffic on demand.
+    profiles:
+      - sim
+
+volumes:
+  db-data:
