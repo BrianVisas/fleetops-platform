@@ -104,13 +104,9 @@ func (a *api) getLatest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, readingResponse{
-		VehicleID:   sample.VehicleID,
-		RecordedAt:  sample.RecordedAt,
-		SpeedKmh:    sample.SpeedKmh,
-		BatteryTemp: sample.BatteryTemp,
-		Voltage:     sample.Voltage,
-	})
+	// reading and readingResponse have the same fields, so a conversion is enough;
+	// the json tags on the response type are ignored by the conversion.
+	writeJSON(w, http.StatusOK, readingResponse(sample))
 }
 
 // apiError matches the error body fleet-api returns, so a client sees one shape
