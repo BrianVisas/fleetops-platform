@@ -22,8 +22,6 @@ jobs:
   test:
     name: build and test
     runs-on: ubuntu-latest
-    # Integration tests pull a Postgres image and run migrations, so this needs
-    # more headroom than the unit-test-only job did.
     timeout-minutes: 25
     defaults:
       run:
@@ -39,9 +37,9 @@ jobs:
           java-version: "21"
           cache: maven
 
-      # verify runs surefire (*Test, no infrastructure) and then failsafe
-      # (*IT, Testcontainers). The runner already has a Docker daemon.
-      - name: Unit and integration tests
+      # verify runs surefire (*Test), then failsafe (*IT, Testcontainers), then
+      # the JaCoCo coverage check. The runner has a Docker daemon already.
+      - name: Unit tests, integration tests and coverage gate
         run: ./mvnw -B -ntp verify
 
       - name: Upload test reports
@@ -52,6 +50,14 @@ jobs:
           path: |
             services/fleet-api/target/surefire-reports/
             services/fleet-api/target/failsafe-reports/
+          retention-days: 7
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-api-jacoco
+          path: services/fleet-api/target/site/jacoco/
           retention-days: 7
 
       - name: Upload the jar

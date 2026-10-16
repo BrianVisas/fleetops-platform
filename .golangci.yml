@@ -1,0 +1,33 @@
+# golangci-lint v2 schema. One config at the repo root covers both Go modules.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # "standard" is errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
+  enable:
+    - bodyclose    # an unclosed response body leaks a connection - exactly the
+                   # failure mode that would wreck the 500-vehicle load test
+    - errorlint    # catches %v on errors where %w is meant, and == on wrapped errors
+    - misspell
+    - revive       # replaces the deprecated golint: naming, exported comments
+  settings:
+    errcheck:
+      # Deliberately ignored returns in this codebase are written as _ = f(),
+      # which errcheck accepts; everything else must be handled.
+      check-blank: true
+    revive:
+      rules:
+        - name: unexported-return
+        - name: error-strings
+        - name: error-return
+        - name: context-as-argument
+        - name: indent-error-flow
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
