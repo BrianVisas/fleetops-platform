@@ -1,0 +1,141 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Vulnerability databases change daily, so a clean scan last week says nothing
+  # about today. 04:17 UTC, off the hour to avoid the scheduling rush.
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks needs history: a secret removed in the last commit is still
+          # in the repository and still compromised.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          version=8.30.0
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: Scan history and working tree
+        run: |
+          gitleaks detect --redact --no-banner --report-format sarif --report-path gitleaks.sarif
+
+      - name: Upload the findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          retention-days: 14
+
+  dependencies:
+    name: dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Trivy reads pom.xml and go.mod directly, so no build is needed and there
+      # is no NVD API key to manage (which is what makes OWASP Dependency-Check
+      # painful in CI).
+      - name: Scan dependencies and IaC
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Generate an SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: cyclonedx
+          output: sbom.cdx.json
+
+      - name: Upload the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          retention-days: 30
+
+  go-vulns:
+    name: govulncheck (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [telemetry-ingest, vehicle-sim]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          cache-dependency-path: services/${{ matrix.service }}/go.mod
+
+      # govulncheck is reachability-aware: it reports a CVE only when the
+      # vulnerable function is actually called from this code, which keeps the
+      # signal-to-noise ratio far better than a manifest scan.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  images:
+    name: image scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [fleet-api, telemetry-ingest, vehicle-sim]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t "fleetops/${{ matrix.service }}:scan" "services/${{ matrix.service }}"
+
+      - name: Scan the image
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: image
+          image-ref: fleetops/${{ matrix.service }}:scan
+          severity: HIGH,CRITICAL
+          # Base-image CVEs with no fix available would otherwise block every
+          # merge with nothing to do about them. The scheduled run still reports
+          # them; see docs/SECURITY_POLICY.md.
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
