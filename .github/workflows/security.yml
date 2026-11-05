@@ -16,6 +16,12 @@ concurrency:
   group: security-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Exceptions live in one reviewable file with expiry dates. Set as an env var
+  # rather than an action input so it works the same locally and in CI, and does
+  # not depend on the action's input schema.
+  TRIVY_IGNOREFILE: .trivyignore.yaml
+
 jobs:
   secrets:
     name: secrets
@@ -48,43 +54,28 @@ jobs:
           path: gitleaks.sarif
           retention-days: 14
 
-  dependencies:
-    name: dependencies
+  iac:
+    name: IaC and config
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      # Trivy reads pom.xml and go.mod directly, so no build is needed and there
-      # is no NVD API key to manage (which is what makes OWASP Dependency-Check
-      # painful in CI).
-      - name: Scan dependencies and IaC
+      # Deliberately NOT scanning dependency manifests here. Trivy resolves a
+      # pom.xml by fetching its parent and BOM chain from Maven Central, which
+      # rate-limits anonymous bulk requests (429, Retry-After 1800) and takes the
+      # whole job down with it. The image scan below reads the jars and binaries
+      # that actually ship, which is both offline and more accurate - a manifest
+      # lists what was requested, an image contains what was resolved.
+      - name: Scan Dockerfiles, compose and Terraform
         uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln,secret,misconfig
+          scanners: misconfig,secret
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
           exit-code: "1"
           format: table
-
-      - name: Generate an SBOM
-        if: always()
-        uses: aquasecurity/trivy-action@0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: cyclonedx
-          output: sbom.cdx.json
-
-      - name: Upload the SBOM
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: sbom.cdx.json
-          retention-days: 30
 
   go-vulns:
     name: govulncheck (${{ matrix.service }})
@@ -134,8 +125,29 @@ jobs:
           image-ref: fleetops/${{ matrix.service }}:scan
           severity: HIGH,CRITICAL
           # Base-image CVEs with no fix available would otherwise block every
-          # merge with nothing to do about them. The scheduled run still reports
-          # them; see docs/SECURITY_POLICY.md.
+          # merge with nothing to do about them. Ones that DO have an upstream
+          # fix we cannot apply ourselves are listed in .trivyignore.yaml with an
+          # expiry date. See docs/SECURITY_POLICY.md.
           ignore-unfixed: true
           exit-code: "1"
           format: table
+
+      # The SBOM is generated from the image rather than the source tree, for the
+      # same reason the vuln scan is: this is the bill of materials for the thing
+      # that actually gets deployed, transitive dependencies resolved.
+      - name: Generate an SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: image
+          image-ref: fleetops/${{ matrix.service }}:scan
+          format: cyclonedx
+          output: sbom-${{ matrix.service }}.cdx.json
+
+      - name: Upload the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cdx.json
+          retention-days: 30

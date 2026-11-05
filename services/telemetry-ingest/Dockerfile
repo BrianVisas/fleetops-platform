@@ -1,5 +1,8 @@
 # ---- build ----
-FROM golang:1.24-alpine AS build
+# The Go toolchain version here decides which stdlib is compiled into the binary,
+# so it is a security input, not a convenience. Building with 1.24 shipped a
+# binary carrying every net/http, crypto/tls and crypto/x509 CVE fixed since.
+FROM golang:1.27-alpine AS build
 WORKDIR /build
 
 # Module files first, so dependencies are cached independently of the source.
@@ -14,6 +17,12 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /telemetry-ingest .
 
 # ---- run ----
 FROM alpine:3.21
+
+# Alpine publishes package fixes to the release branch faster than it rebuilds
+# the image tag, so the tag alone leaves patched packages on the table
+# (libcrypto3 r1 in the image, r2 in the repository). One layer, no new packages.
+RUN apk upgrade --no-cache
+
 RUN adduser --system --uid 10001 fleetops
 USER 10001
 

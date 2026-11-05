@@ -6,6 +6,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 failures=0
 
+# Exceptions with expiry dates, shared with CI. Inside the Trivy container the
+# repository is mounted at /repo, so the path has to be absolute there.
+IGNORE_IN_CONTAINER=/repo/.trivyignore.yaml
+
 echo "=== secrets (gitleaks) ==="
 if command -v gitleaks > /dev/null; then
   gitleaks detect --redact --no-banner || failures=$((failures + 1))
@@ -15,10 +19,13 @@ else
 fi
 
 echo
-echo "=== dependencies and IaC (trivy fs) ==="
+echo "=== IaC and config (trivy fs) ==="
+# No `vuln` scanner here on purpose: resolving pom.xml needs Maven Central and
+# gets rate-limited. Dependency vulnerabilities come from the image scan below
+# and from govulncheck. See docs/SECURITY_POLICY.md.
 docker run --rm -v "$PWD:/repo" -v "$HOME/.cache/trivy:/root/.cache/trivy" \
   aquasec/trivy:latest fs /repo \
-  --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+  --scanners misconfig,secret --severity HIGH,CRITICAL --exit-code 1 \
   || failures=$((failures + 1))
 
 echo
@@ -38,7 +45,9 @@ for service in fleet-api telemetry-ingest vehicle-sim; do
   echo "--- $service"
   docker build -q -t "fleetops/$service:scan" "services/$service" > /dev/null || { failures=$((failures + 1)); continue; }
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$PWD:/repo:ro" \
     -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+    -e "TRIVY_IGNOREFILE=$IGNORE_IN_CONTAINER" \
     aquasec/trivy:latest image "fleetops/$service:scan" \
     --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
     || failures=$((failures + 1))
