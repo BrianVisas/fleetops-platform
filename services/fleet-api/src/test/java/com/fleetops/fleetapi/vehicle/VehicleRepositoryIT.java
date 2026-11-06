@@ -7,7 +7,6 @@ import com.fleetops.fleetapi.support.PostgresIT;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,16 +16,16 @@ import org.springframework.data.domain.PageRequest;
 /**
  * What mocks cannot prove: that the entity mapping, the derived queries and the
  * schema Flyway created actually agree with each other.
+ *
+ * There is no cleanup method here. PostgresIT truncates every table before each
+ * test, which a repository.deleteAll() cannot do - deleteAll only knows about
+ * vehicles, and a vehicle another test left behind in a rollout cannot be
+ * deleted without the rows referencing it going first.
  */
 class VehicleRepositoryIT extends PostgresIT {
 
     @Autowired
     private VehicleRepository repository;
-
-    @BeforeEach
-    void clean() {
-        repository.deleteAll();
-    }
 
     private Vehicle vehicle(String vin, String model, String swVersion) {
         return new Vehicle(UUID.randomUUID(), vin, model, swVersion, OffsetDateTime.now());
