@@ -15,10 +15,17 @@ linters:
     - misspell
     - revive       # replaces the deprecated golint: naming, exported comments
   settings:
-    errcheck:
-      # Deliberately ignored returns in this codebase are written as _ = f(),
-      # which errcheck accepts; everything else must be handled.
-      check-blank: true
+    # errcheck runs on its defaults, which means: a call whose error return is
+    # dropped entirely is an error, and a call whose error is assigned to the
+    # blank identifier is not. `_ = response.Body.Close()` is Go's way of saying
+    # "ignored on purpose", and it is reviewable precisely because it is visible.
+    #
+    # An earlier version of this file set check-blank: true, which forbids that
+    # form - and then claimed in a comment that errcheck accepted it. It does
+    # not: the first CI run reported six findings, all of them intentional
+    # discards in response draining and test fixtures. A linter that leaves no
+    # way to express intent gets silenced with nolint comments, which is worse
+    # than not running it.
     revive:
       rules:
         - name: unexported-return
