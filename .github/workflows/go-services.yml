@@ -5,12 +5,15 @@ on:
     paths:
       - "services/telemetry-ingest/**"
       - "services/vehicle-sim/**"
+      # fleet-api's migrations are the schema the ingest integration test applies.
+      - "services/fleet-api/src/main/resources/db/migration/**"
       - ".github/workflows/go-services.yml"
   push:
     branches: [main]
     paths:
       - "services/telemetry-ingest/**"
       - "services/vehicle-sim/**"
+      - "services/fleet-api/src/main/resources/db/migration/**"
       - ".github/workflows/go-services.yml"
 
 permissions:
@@ -24,10 +27,8 @@ jobs:
   test:
     name: ${{ matrix.service }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
-      # Both services are reported separately, and one failing does not hide the
-      # other's result.
       fail-fast: false
       matrix:
         service: [telemetry-ingest, vehicle-sim]
@@ -39,8 +40,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The Go version comes from the service's own go.mod, so the toolchain is
-      # declared in one place rather than duplicated in the pipeline.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -61,10 +60,14 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # -race catches data races between the vehicle goroutines; -count=1 stops Go
-      # from serving a cached pass from a previous run.
-      - name: Test
+      - name: Unit tests
         run: go test -race -count=1 ./...
+
+      # Only telemetry-ingest touches the database. vehicle-sim is a client and
+      # has nothing to integrate against.
+      - name: Integration tests
+        if: matrix.service == 'telemetry-ingest'
+        run: go test -tags=integration -count=1 -timeout=10m ./...
 
       - name: Build the binary
         run: go build -trimpath -o /tmp/${{ matrix.service }} .

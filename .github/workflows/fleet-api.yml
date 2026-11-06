@@ -1,8 +1,5 @@
 name: fleet-api
 
-# Path filters are what keep a monorepo pipeline fast: a change to a Go service
-# must not rebuild the Java one. The workflow file itself is included so that
-# editing the pipeline still runs it.
 on:
   pull_request:
     paths:
@@ -17,16 +14,17 @@ on:
 permissions:
   contents: read
 
-# A new push to the same branch cancels the previous run instead of queueing it.
 concurrency:
   group: fleet-api-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: build and unit test
+    name: build and test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Integration tests pull a Postgres image and run migrations, so this needs
+    # more headroom than the unit-test-only job did.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: services/fleet-api
@@ -41,21 +39,20 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Compile and run unit tests
-        run: ./mvnw -B -ntp test
+      # verify runs surefire (*Test, no infrastructure) and then failsafe
+      # (*IT, Testcontainers). The runner already has a Docker daemon.
+      - name: Unit and integration tests
+        run: ./mvnw -B -ntp verify
 
-      # Surefire writes XML and text reports; keeping them on a failed run means
-      # the stack trace is readable without re-running the job locally.
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: fleet-api-surefire-reports
-          path: services/fleet-api/target/surefire-reports/
+          name: fleet-api-test-reports
+          path: |
+            services/fleet-api/target/surefire-reports/
+            services/fleet-api/target/failsafe-reports/
           retention-days: 7
-
-      - name: Package the jar
-        run: ./mvnw -B -ntp -DskipTests package
 
       - name: Upload the jar
         uses: actions/upload-artifact@v4
