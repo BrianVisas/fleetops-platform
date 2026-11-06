@@ -16,7 +16,7 @@ COPY *.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /telemetry-ingest .
 
 # ---- run ----
-FROM alpine:3.21
+FROM alpine:3.24
 
 # Alpine publishes package fixes to the release branch faster than it rebuilds
 # the image tag, so the tag alone leaves patched packages on the table
