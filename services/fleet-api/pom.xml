@@ -155,6 +155,13 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-failsafe-plugin</artifactId>
+				<!-- Explicit argLine: without one, failsafe inherits the argLine property
+				     JaCoCo sets, the integration tests add to jacoco.exec, and the gate checks
+				     a different number than the unit-test report shows. This also gives the
+				     ITs the Mockito agent instead of a runtime self-attach. -->
+				<configuration>
+					<argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+				</configuration>
 				<executions>
 					<execution>
 						<goals>
