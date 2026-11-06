@@ -9,30 +9,14 @@
 #   - scope it with `paths` so it silences one file, not the whole scan
 #   - say in `statement` why it cannot be fixed here, not that it is low risk
 #   - set `expired_at` to the next review, never more than ~90 days out
+#   - list it in docs/SECURITY_POLICY.md under "Named exceptions"
 #
-# Every entry here is also listed in docs/SECURITY_POLICY.md with its reasoning.
+# There are no exceptions at present. The file stays because both the workflow
+# and scripts/security-scan.sh point TRIVY_IGNOREFILE at it.
+#
+# History: three Go standard-library CVEs in usr/bin/pebble (shipped inside
+# eclipse-temurin:21-jre) were excepted on 2026-10-16 and removed on 2026-11-06,
+# when a freshly pulled base image carried a fixed pebble and the image scan was
+# clean without the exception.
 
-vulnerabilities:
-  # /usr/bin/pebble is Canonical's service manager, shipped inside the
-  # eclipse-temurin:21-jre base image (Ubuntu 26.04). It is a Go binary compiled
-  # by Canonical with Go 1.26.7, so the fix - rebuild with Go 1.26.9 or 1.27.2 -
-  # belongs to whoever builds that base image, not to this repository. We do not
-  # execute pebble: the container entrypoint is `java -jar app.jar`.
-  #
-  # Removal path: when a rebuilt temurin image appears with a newer pebble, these
-  # entries stop matching and can be deleted. The nightly scan is what tells us.
-  - id: CVE-2026-78667
-    paths:
-      - usr/bin/pebble
-    statement: Base-image binary (eclipse-temurin:21-jre), not built or executed by this service.
-    expired_at: 2027-01-15
-  - id: CVE-2026-78669
-    paths:
-      - usr/bin/pebble
-    statement: Base-image binary (eclipse-temurin:21-jre), not built or executed by this service.
-    expired_at: 2027-01-15
-  - id: CVE-2026-97031
-    paths:
-      - usr/bin/pebble
-    statement: Base-image binary (eclipse-temurin:21-jre), not built or executed by this service.
-    expired_at: 2027-01-15
+vulnerabilities: []

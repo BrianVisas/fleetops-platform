@@ -25,7 +25,7 @@ echo "=== IaC and config (trivy fs) ==="
 # and from govulncheck. See docs/SECURITY_POLICY.md.
 docker run --rm -v "$PWD:/repo" -v "$HOME/.cache/trivy:/root/.cache/trivy" \
   aquasec/trivy:latest fs /repo \
-  --scanners misconfig,secret --severity HIGH,CRITICAL --exit-code 1 \
+  --scanners misconfig,secret --offline-scan --severity HIGH,CRITICAL --exit-code 1 \
   || failures=$((failures + 1))
 
 echo
@@ -43,13 +43,13 @@ echo
 echo "=== images (trivy image) ==="
 for service in fleet-api telemetry-ingest vehicle-sim; do
   echo "--- $service"
-  docker build -q -t "fleetops/$service:scan" "services/$service" > /dev/null || { failures=$((failures + 1)); continue; }
+  docker build --pull -q -t "fleetops/$service:scan" "services/$service" > /dev/null || { failures=$((failures + 1)); continue; }
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$PWD:/repo:ro" \
     -v "$HOME/.cache/trivy:/root/.cache/trivy" \
     -e "TRIVY_IGNOREFILE=$IGNORE_IN_CONTAINER" \
     aquasec/trivy:latest image "fleetops/$service:scan" \
-    --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+    --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --exit-on-eol 1 \
     || failures=$((failures + 1))
 done
 

@@ -69,6 +69,10 @@ jobs:
       # lists what was requested, an image contains what was resolved.
       - name: Scan Dockerfiles, compose and Terraform
         uses: aquasecurity/trivy-action@0.36.0
+        env:
+          # Trivy resolves pom.xml through Maven Central even with the vuln
+          # scanner off, and gets rate-limited. See EL-007.
+          TRIVY_OFFLINE_SCAN: "true"
         with:
           scan-type: fs
           scan-ref: .
@@ -91,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: services/${{ matrix.service }}/go.mod
           cache-dependency-path: services/${{ matrix.service }}/go.mod
@@ -120,6 +124,10 @@ jobs:
 
       - name: Scan the image
         uses: aquasecurity/trivy-action@0.36.0
+        env:
+          # An end-of-life OS reports zero findings because nobody publishes fixes
+          # for it any more. Fail on that instead of passing on missing data. EL-015.
+          TRIVY_EXIT_ON_EOL: "1"
         with:
           scan-type: image
           image-ref: fleetops/${{ matrix.service }}:scan
