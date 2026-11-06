@@ -22,12 +22,15 @@ Every entry follows the same structure:
 | [EL-004](#el-004-ci-red-local-green-integration-tests-depended-on-class-order) | CI red, local green: integration tests depended on class order | testing | fixed |
 | [EL-005](#el-005-a-coverage-gate-that-passed-without-measuring-anything) | A coverage gate that passed without measuring anything | CI | fixed |
 | [EL-006](#el-006-a-lint-config-that-contradicted-its-own-comment) | A lint config that contradicted its own comment | CI | fixed |
-| [EL-007](#el-007-maven-central-rate-limiting-took-down-the-dependency-scan) | Maven Central rate limiting took down the dependency scan | security | fix open |
-| [EL-008](#el-008-22-cves-in-a-binary-with-no-dependencies) | 22 CVEs in a binary with no dependencies | security | fix open |
+| [EL-007](#el-007-maven-central-rate-limiting-took-down-the-dependency-scan) | Maven Central rate limiting took down the dependency scan | security | fixed |
+| [EL-008](#el-008-22-cves-in-a-binary-with-no-dependencies) | 22 CVEs in a binary with no dependencies | security | fixed |
 | [EL-009](#el-009-operation-not-permitted-even-with-sudo) | "Operation not permitted", even with sudo | environment | worked around |
 | [EL-010](#el-010-pushes-that-ci-never-saw) | Pushes that CI never saw | workflow | fixed |
 | [EL-011](#el-011-the-gate-and-the-report-measured-different-things) | The gate and the report measured different things | CI | fixed |
 | [EL-012](#el-012-stale-coverage-data-made-a-correct-fix-look-wrong) | Stale coverage data made a correct fix look wrong | CI | no code change |
+| [EL-013](#el-013-main-could-not-build-the-telemetry-ingest-image) | main could not build the telemetry-ingest image | build | fixed |
+| [EL-014](#el-014-ci-would-have-scanned-with-an-old-go) | CI would have scanned with an old Go | CI | fixed |
+| [EL-015](#el-015-zero-findings-on-an-unsupported-os) | Zero findings on an unsupported OS | security | fixed |
 
 ---
 
@@ -212,7 +215,7 @@ than not running it.
 
 ## EL-007: Maven Central rate limiting took down the dependency scan
 
-2026-10-16 · security · fix open on `ci/4-security-scans`
+2026-10-16 to 2026-11-06 · security · fixed in the security PR (`ci/4-security-scans`)
 
 **Symptom.** The first local run of the security scans aborted in the Trivy
 filesystem scan:
@@ -232,18 +235,28 @@ vulnerabilities come from two better sources: the container image scan, which
 reads the jars and binaries that actually ship, and govulncheck, which reports
 only vulnerabilities reachable from our code. SBOMs are generated per image.
 
-**Verification.** Pending: re-run of `scripts/security-scan.sh` on the security
-branch.
+That fix rested on an assumption that turned out to be wrong: that with the
+vulnerability scanner off, Trivy would leave `pom.xml` alone. The second run, on
+2026-11-06, hit the same 429 for `spring-batch-bom-6.0.6.pom`. Trivy parses
+`pom.xml` while inspecting the tree, whichever scanners are enabled. Trivy's
+Java documentation gives the switch that actually stops it: "You can disable
+connecting to the maven repository with the `--offline-scan` flag." The
+filesystem scan now runs with it, as `TRIVY_OFFLINE_SCAN` in CI.
+
+**Verification.** The scan on 2026-11-06 completed the filesystem stage with no
+429 and reported 0 misconfigurations in all three Dockerfiles. The only side
+effect is an expected warning that pom dependency versions cannot be determined.
 
 **Lesson.** A gate must not depend on an unauthenticated third party being in a
 good mood. And scan what you ship: a manifest lists what was requested, an image
-contains what was resolved.
+contains what was resolved. Also: a fix built on an untested assumption is a
+hypothesis. This one needed a second run to become a fix.
 
 ---
 
 ## EL-008: 22 CVEs in a binary with no dependencies
 
-2026-10-16 · security · fix open on `ci/4-security-scans`
+2026-10-16 to 2026-11-06 · security · fixed in the security PR (`ci/4-security-scans`)
 
 **Symptom.** The image scan reported 22 HIGH findings for vehicle-sim and 36 for
 telemetry-ingest. vehicle-sim has no third-party dependencies at all.
@@ -256,9 +269,12 @@ package repository.
 
 **Fix.** Builder image moved to `golang:1.27-alpine`; the runtime stage runs
 `apk upgrade --no-cache`. In telemetry-ingest, govulncheck's three reachable
-findings were fixed by upgrading pgx to 5.12.0 and x/text to 0.43.0.
+findings were fixed by upgrading pgx to 5.12.0 and x/text to 0.43.0. The Alpine
+side turned out to need more than a package upgrade; see EL-015.
 
-**Verification.** Pending: re-scan on the security branch.
+**Verification.** On 2026-11-06 both Go images scanned with 0 findings, in the
+`gobinary` layer as well as the OS layer, and govulncheck reported no
+vulnerabilities in either module.
 
 **Lesson.** The builder image tag is a security input, not a convenience. It
 belongs on the same review cadence as dependency versions.
@@ -376,3 +392,102 @@ the gate will read 0.64". `clean verify` then reported exactly 0.64.
 a question about old code. It is the same family as a Docker layer cache serving
 an old base image, or the Go test cache serving a pass, which is why CI runs
 `go test -count=1`.
+
+---
+
+## EL-013: main could not build the telemetry-ingest image
+
+2026-11-06 · build · fixed in the security PR (`ci/4-security-scans`)
+
+**Symptom.** On `main`, `docker build services/telemetry-ingest` failed at the
+`go mod download` step: `process "/bin/sh -c go mod download" did not complete
+successfully: exit code: 1`. Every CI check on `main` was green.
+
+**Root cause.** PR #10 added testcontainers-go, whose minimum Go version moved
+the `go` directive in `go.mod` from 1.24 to 1.25.0. The Dockerfile's builder
+stage still used `golang:1.24-alpine`, and the official Go images set
+`GOTOOLCHAIN=local`, so they will not fetch a newer toolchain to satisfy
+`go.mod`. The captured output was cut off before Go's own message; the cause
+follows from those two facts, and the fix below confirms it. CI never noticed
+because it tests with `setup-go`, which reads `go.mod` and installs a matching
+Go, and no workflow on `main` built the container image.
+
+**Fix.** The builder stage moved to `golang:1.27-alpine`. The security workflow
+builds all three images on every pull request, as part of the image scan, so a
+Dockerfile that cannot build now fails a PR.
+
+**Verification.** All three images build on the security branch, and the image
+scan ran against each of them.
+
+**Lesson.** CI only protects what it executes. If the artefact you ship is a
+container image, build that image on every pull request. Testing the code with a
+different toolchain from the one in the Dockerfile leaves exactly this gap.
+
+---
+
+## EL-014: CI would have scanned with an old Go
+
+2026-11-06 · CI · fixed in the security PR (`ci/4-security-scans`)
+
+**Symptom.** govulncheck failed both Go modules locally with one finding each:
+
+```
+Vulnerability #1: GO-2026-6809
+    Distrust compromised intermediate certificates in crypto/x509
+    Found in: crypto/x509@go1.27.2
+    Fixed in: crypto/x509@go1.27.3
+```
+
+**Root cause.** govulncheck checks the standard library of the Go toolchain that
+runs it, not the one in the Dockerfile. Locally that was go1.27.2. Looking at
+what CI would have run turned up a bigger problem: `setup-go` with
+`go-version-file` installs exactly the version in the `go` line when it has a
+patch number, so telemetry-ingest (`go 1.26.0`) would have been tested and
+scanned with Go 1.26.0, and vehicle-sim (`go 1.24`) with the latest 1.24.x, a
+release line that no longer receives security fixes. setup-go reads a `toolchain`
+line instead when there is one, but only from v6; the workflows used v5.
+
+**Fix.** Both modules pin `toolchain go1.27.3` in `go.mod`, and both workflows
+moved to `actions/setup-go@v6`. The `go` line stays the minimum language
+version; the `toolchain` line decides the Go that builds, tests and scans.
+Dependabot's `gomod` updates propose a new toolchain line when a patch release
+appears, so the pin does not quietly go stale.
+
+**Verification.** With the toolchain pinned, govulncheck reported `No
+vulnerabilities found.` for both modules.
+
+**Lesson.** A scanner's result is only as current as the inputs it runs on. When
+a tool checks "your" standard library, find out whose standard library that
+actually is, and in CI it may not be the one you expect.
+
+---
+
+## EL-015: Zero findings on an unsupported OS
+
+2026-11-06 · security · fixed in the security PR (`ci/4-security-scans`)
+
+**Symptom.** Both Go images scanned with 0 vulnerabilities. In the same output:
+
+```
+WARN  This OS version is no longer supported by the distribution  family="alpine" version="3.21.10"
+WARN  The vulnerability detection may be insufficient because security updates are not provided
+```
+
+The warning did not fail the scan, locally or in CI.
+
+**Root cause.** Alpine 3.21 had reached end of life since the first scan in
+October. Once a distribution stops publishing security updates, there are no
+fixed versions to compare against, so a scanner finds nothing. Zero findings
+here meant no data, not no vulnerabilities.
+
+**Fix.** Both runtime stages moved to `alpine:3.24`, the current series, read
+from `alpine:latest` and pinned to the minor version so that a new series only
+arrives through a reviewable pull request. The image scan now runs with
+`--exit-on-eol 1` (`TRIVY_EXIT_ON_EOL` in CI), so an end-of-life base OS fails
+the scan instead of producing a reassuring zero.
+
+**Verification.** The re-scan detected Alpine 3.24.4 with no end-of-life
+warning, and every scan reported clean.
+
+**Lesson.** Read the warnings, not just the count. The most dangerous scan result
+is a clean one that has no data behind it.
