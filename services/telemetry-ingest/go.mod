@@ -2,6 +2,8 @@ module github.com/BrianVisas/fleetops-platform/services/telemetry-ingest
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/testcontainers/testcontainers-go v0.44.0
