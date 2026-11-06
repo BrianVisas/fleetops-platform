@@ -29,6 +29,10 @@
 	<properties>
 		<java.version>21</java.version>
 		<testcontainers.version>2.0.5</testcontainers.version>
+		<!-- A floor sits just under current coverage: high enough that deleting
+		     tests breaks the build, low enough that it never has to be lowered.
+		     Set from the JaCoCo report in target/site/jacoco. Raise it when there is headroom. -->
+		<coverage.minimum>0.63</coverage.minimum>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -42,14 +46,8 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-flyway</artifactId>
-		</dependency> 
-                <dependency>
-                        <groupId>org.springframework.boot</groupId>
-                        <artifactId>spring-boot-starter-webmvc-test</artifactId>
-                        <scope>test</scope>
-                </dependency>
-
-        	<dependency>
+		</dependency>
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
@@ -61,11 +59,18 @@
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
-
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Test slices. In Spring Boot 4 these moved into per-area starters,
+		     which is why @WebMvcTest needs spring-boot-starter-webmvc-test. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -96,6 +101,9 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- Spring Boot 4 does not manage Testcontainers, so the version comes
+			     from here. Testcontainers 2.x renamed the artifacts and packages:
+			     testcontainers-postgresql, org.testcontainers.postgresql. -->
 			<dependency>
 				<groupId>org.testcontainers</groupId>
 				<artifactId>testcontainers-bom</artifactId>
@@ -111,7 +119,11 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
-                                </plugin>
+			</plugin>
+
+			<!-- Resolves dependency coordinates into properties, which is what
+			     makes ${org.mockito:mockito-core:jar} below expand to a real path
+			     instead of being passed to the JVM literally. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-dependency-plugin</artifactId>
@@ -123,22 +135,89 @@
 					</execution>
 				</executions>
 			</plugin>
+
+			<!-- Unit tests (*Test): no infrastructure, must stay fast.
+			     @{argLine} is late replacement - JaCoCo's prepare-agent sets the
+			     argLine property during the build, and @{} reads it at execution
+			     time rather than at pom parse time, when it does not exist yet.
+			     Using ${argLine} here is the classic way to break coverage. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+					<argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
 				</configuration>
 			</plugin>
+
+			<!-- Integration tests (*IT): real Postgres via Testcontainers, bound to
+			     the integration-test phase so `mvn test` stays runnable with no
+			     Docker daemon at all. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-failsafe-plugin</artifactId>
+				<!-- Explicit argLine: without one, failsafe inherits the argLine property
+				     JaCoCo sets, the integration tests add to jacoco.exec, and the gate checks
+				     a different number than the unit-test report shows. This also gives the
+				     ITs the Mockito agent instead of a runtime self-attach. -->
+				<configuration>
+					<argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+				</configuration>
 				<executions>
 					<execution>
 						<goals>
 							<goal>integration-test</goal>
 							<goal>verify</goal>
 						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.15</version>
+				<configuration>
+					<excludes>
+						<!-- A main method and records with no logic would inflate the
+						     number without telling us anything about test quality. -->
+						<exclude>**/FleetApiApplication.class</exclude>
+						<exclude>**/dto/**</exclude>
+					</excludes>
+				</configuration>
+				<executions>
+					<execution>
+						<id>prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${coverage.minimum}</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>

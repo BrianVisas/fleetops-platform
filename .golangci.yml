@@ -1,0 +1,40 @@
+# golangci-lint v2 schema. One config at the repo root covers both Go modules.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # "standard" is errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
+  enable:
+    - bodyclose    # an unclosed response body leaks a connection - exactly the
+                   # failure mode that would wreck the 500-vehicle load test
+    - errorlint    # catches %v on errors where %w is meant, and == on wrapped errors
+    - misspell
+    - revive       # replaces the deprecated golint: naming, exported comments
+  settings:
+    # errcheck runs on its defaults, which means: a call whose error return is
+    # dropped entirely is an error, and a call whose error is assigned to the
+    # blank identifier is not. `_ = response.Body.Close()` is Go's way of saying
+    # "ignored on purpose", and it is reviewable precisely because it is visible.
+    #
+    # An earlier version of this file set check-blank: true, which forbids that
+    # form - and then claimed in a comment that errcheck accepted it. It does
+    # not: the first CI run reported six findings, all of them intentional
+    # discards in response draining and test fixtures. A linter that leaves no
+    # way to express intent gets silenced with nolint comments, which is worse
+    # than not running it.
+    revive:
+      rules:
+        - name: unexported-return
+        - name: error-strings
+        - name: error-return
+        - name: context-as-argument
+        - name: indent-error-flow
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
