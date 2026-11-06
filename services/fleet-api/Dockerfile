@@ -17,7 +17,11 @@ WORKDIR /app
 # curl is only here so compose can health-check the container. In Kubernetes the
 # probes are HTTP requests made by the kubelet, so this layer can go away later -
 # at the cost of a few more packages for Trivy to scan in the meantime.
+#
+# Upgrade first: the base image tag lags Ubuntu security updates (apt itself had
+# CVE-2026-109518 on the first clean scan). Same reason the Go images run apk upgrade.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 

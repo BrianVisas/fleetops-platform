@@ -1,0 +1,43 @@
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /services/fleet-api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the whole Spring Boot line instead of twenty: the parent and
+      # its managed dependencies move together anyway.
+      spring:
+        patterns: ["org.springframework*"]
+
+  - package-ecosystem: gomod
+    directory: /services/telemetry-ingest
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /services/vehicle-sim
+    schedule:
+      interval: weekly
+      day: monday
+
+  # Pinned action majors go stale silently; this is how the pipeline stays current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directories:
+      - /services/fleet-api
+      - /services/telemetry-ingest
+      - /services/vehicle-sim
+    schedule:
+      interval: weekly
+      day: monday

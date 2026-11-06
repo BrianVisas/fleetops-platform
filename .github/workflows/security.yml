@@ -1,0 +1,161 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Vulnerability databases change daily, so a clean scan last week says nothing
+  # about today. 04:17 UTC, off the hour to avoid the scheduling rush.
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Exceptions live in one reviewable file with expiry dates. Set as an env var
+  # rather than an action input so it works the same locally and in CI, and does
+  # not depend on the action's input schema.
+  TRIVY_IGNOREFILE: .trivyignore.yaml
+
+jobs:
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks needs history: a secret removed in the last commit is still
+          # in the repository and still compromised.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          version=8.30.0
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: Scan history and working tree
+        run: |
+          gitleaks detect --redact --no-banner --report-format sarif --report-path gitleaks.sarif
+
+      - name: Upload the findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          retention-days: 14
+
+  iac:
+    name: IaC and config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately NOT scanning dependency manifests here. Trivy resolves a
+      # pom.xml by fetching its parent and BOM chain from Maven Central, which
+      # rate-limits anonymous bulk requests (429, Retry-After 1800) and takes the
+      # whole job down with it. The image scan below reads the jars and binaries
+      # that actually ship, which is both offline and more accurate - a manifest
+      # lists what was requested, an image contains what was resolved.
+      - name: Scan Dockerfiles, compose and Terraform
+        uses: aquasecurity/trivy-action@0.36.0
+        env:
+          # Trivy resolves pom.xml through Maven Central even with the vuln
+          # scanner off, and gets rate-limited. See EL-007.
+          TRIVY_OFFLINE_SCAN: "true"
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: misconfig,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+  go-vulns:
+    name: govulncheck (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [telemetry-ingest, vehicle-sim]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          cache-dependency-path: services/${{ matrix.service }}/go.mod
+
+      # govulncheck is reachability-aware: it reports a CVE only when the
+      # vulnerable function is actually called from this code, which keeps the
+      # signal-to-noise ratio far better than a manifest scan.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  images:
+    name: image scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [fleet-api, telemetry-ingest, vehicle-sim]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t "fleetops/${{ matrix.service }}:scan" "services/${{ matrix.service }}"
+
+      - name: Scan the image
+        uses: aquasecurity/trivy-action@0.36.0
+        env:
+          # An end-of-life OS reports zero findings because nobody publishes fixes
+          # for it any more. Fail on that instead of passing on missing data. EL-015.
+          TRIVY_EXIT_ON_EOL: "1"
+        with:
+          scan-type: image
+          image-ref: fleetops/${{ matrix.service }}:scan
+          severity: HIGH,CRITICAL
+          # Base-image CVEs with no fix available would otherwise block every
+          # merge with nothing to do about them. Ones that DO have an upstream
+          # fix we cannot apply ourselves are listed in .trivyignore.yaml with an
+          # expiry date. See docs/SECURITY_POLICY.md.
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      # The SBOM is generated from the image rather than the source tree, for the
+      # same reason the vuln scan is: this is the bill of materials for the thing
+      # that actually gets deployed, transitive dependencies resolved.
+      - name: Generate an SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: image
+          image-ref: fleetops/${{ matrix.service }}:scan
+          format: cyclonedx
+          output: sbom-${{ matrix.service }}.cdx.json
+
+      - name: Upload the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cdx.json
+          retention-days: 30
