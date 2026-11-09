@@ -1,0 +1,118 @@
+name: release
+
+# On every push to main:
+#   - release-please keeps a release pull request up to date from the
+#     Conventional Commits since the last release;
+#   - every service image is built for linux/amd64 and linux/arm64 and pushed to
+#     GHCR as :main and :sha-<commit>, with build provenance and an SBOM attached.
+# When the push is the merge of that release pull request, release-please creates
+# the tag and the GitHub release, and the same images are also tagged with the
+# version (0.2.0 and 0.2).
+#
+# On pull requests the same multi-arch build runs without pushing, so a
+# Dockerfile that only breaks on arm64 fails the PR instead of main.
+#
+# Why one workflow and not a separate one triggered by the release tag: a tag
+# created with GITHUB_TOKEN does not trigger other workflows. Publishing from a
+# job that depends on release-please is the documented way round that, and it
+# needs no personal access token. See ADR-0005.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  # A superseded PR build can be cancelled; a publish to main must never be
+  # stopped half-way through pushing.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  release-please:
+    name: release-please
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write        # create the tag, the release and CHANGELOG commits
+      pull-requests: write   # open and update the release pull request
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  images:
+    name: image (${{ matrix.service }})
+    needs: release-please
+    # release-please is skipped on pull requests; build anyway, but never after
+    # release-please itself failed.
+    if: ${{ !cancelled() && (needs.release-please.result == 'success' || needs.release-please.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write        # push to ghcr.io with GITHUB_TOKEN
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [fleet-api, telemetry-ingest, vehicle-sim]
+    steps:
+      - uses: actions/checkout@v4
+
+      # QEMU runs the arm64 runtime stages (apk/apt, adduser). Compilation does
+      # not need it: the build stages run on $BUILDPLATFORM and cross-compile.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Registry paths must be lower case, and the owner is "BrianVisas".
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/fleetops-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=main,enable=${{ github.event_name == 'push' }}
+            type=semver,pattern={{version}},value=v${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.release_created == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.release_created == 'true' }}
+          labels: |
+            org.opencontainers.image.title=fleetops-${{ matrix.service }}
+
+      - name: Build for amd64 and arm64${{ github.event_name == 'push' && ', and push' || '' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache in the GitHub Actions cache, one scope per service, so
+          # an unchanged go.mod or pom.xml skips the dependency download.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # A record of how the image was built (source, commit, builder, build
+          # args) and of what it contains, attached to the image as attestations.
+          # They are not signed; signing (cosign) is a later step.
+          provenance: mode=max
+          sbom: true

@@ -2,7 +2,13 @@
 # The Go toolchain version here decides which stdlib is compiled into the binary,
 # so it is a security input, not a convenience. Building with 1.24 shipped a
 # binary carrying every net/http, crypto/tls and crypto/x509 CVE fixed since.
-FROM golang:1.27-alpine AS build
+#
+# The build stage runs on the build machine's own architecture ($BUILDPLATFORM)
+# and cross-compiles for the target, which Go does natively. An arm64 image then
+# costs no emulated compilation: only the small runtime stage below runs under
+# QEMU. See ADR-0005.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /build
 
 # Module files first, so dependencies are cached independently of the source.
@@ -13,7 +19,8 @@ COPY *.go ./
 
 # CGO off gives a static binary that needs no libc in the runtime image.
 # -trimpath keeps build paths out of the binary, which makes builds reproducible.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /telemetry-ingest .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /telemetry-ingest .
 
 # ---- run ----
 FROM alpine:3.24
