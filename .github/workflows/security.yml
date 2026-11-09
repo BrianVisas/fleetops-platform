@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Gitleaks needs history: a secret removed in the last commit is still
           # in the repository and still compromised.
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Deliberately NOT scanning dependency manifests here. Trivy resolves a
       # pom.xml by fetching its parent and BOM chain from Maven Central, which
@@ -93,7 +93,7 @@ jobs:
       run:
         working-directory: services/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
@@ -117,7 +117,7 @@ jobs:
       matrix:
         service: [fleet-api, telemetry-ingest, vehicle-sim]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the image
         run: docker build -t "fleetops/${{ matrix.service }}:scan" "services/${{ matrix.service }}"
