@@ -1,0 +1,22 @@
+
+# Scanner exceptions, each scoped to a path and each with an expiry date.
+#
+# An exception without an expiry is a permanent silence that nobody revisits.
+# When `expired_at` passes, Trivy reports the finding again and the decision has
+# to be made a second time - which is the point.
+#
+# Rules for adding an entry:
+#   - scope it with `paths` so it silences one file, not the whole scan
+#   - say in `statement` why it cannot be fixed here, not that it is low risk
+#   - set `expired_at` to the next review, never more than ~90 days out
+#   - list it in docs/SECURITY_POLICY.md under "Named exceptions"
+#
+# There are no exceptions at present. The file stays because both the workflow
+# and scripts/security-scan.sh point TRIVY_IGNOREFILE at it.
+#
+# History: three Go standard-library CVEs in usr/bin/pebble (shipped inside
+# eclipse-temurin:21-jre) were excepted on 2026-10-16 and removed on 2026-11-06,
+# when a freshly pulled base image carried a fixed pebble and the image scan was
+# clean without the exception.
+
+vulnerabilities: []
