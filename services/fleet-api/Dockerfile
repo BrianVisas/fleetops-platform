@@ -14,7 +14,7 @@ COPY src ./src
 RUN mvn -B -DskipTests package
 
 # ---- run ----
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 WORKDIR /app
 
 # curl is only here so compose can health-check the container. In Kubernetes the
