@@ -16,11 +16,8 @@
 ### CI and delivery
 
 * act on the first security scan ([26b31f7](https://github.com/BrianVisas/fleetops-platform/commit/26b31f7ff1243409084bcd536cdc78c88bf3e5e6))
-* build and unit test workflows for java and go services ([186ba42](https://github.com/BrianVisas/fleetops-platform/commit/186ba4274be72164a14cab0f4df693c30ddacbae))
 * build and unit test workflows for java and go services ([5267ef0](https://github.com/BrianVisas/fleetops-platform/commit/5267ef0e2af3c8475741e2f555a505d004ecd4b9))
-* coverage gates and go linting ([37e6c06](https://github.com/BrianVisas/fleetops-platform/commit/37e6c0611977b0380baef4eac7face133616c189))
 * coverage gates and go linting ([b96a690](https://github.com/BrianVisas/fleetops-platform/commit/b96a690bbcefa12abc1f96a4e685bdad94d7f18c))
-* publish multi-arch images to GHCR and version releases with release-please ([6ed2463](https://github.com/BrianVisas/fleetops-platform/commit/6ed24638a7663083c07f6265970657a2f12edb29))
 * publish multi-arch images to GHCR and version releases with release-please ([7b9455a](https://github.com/BrianVisas/fleetops-platform/commit/7b9455a1b83c31285879d91ccd71da794d0ce96f))
 * security scanning, and fixes for what it found ([6cd1af3](https://github.com/BrianVisas/fleetops-platform/commit/6cd1af30195f4768564c8d9f19ea0152c06258e4))
 
@@ -33,14 +30,12 @@
 
 ### Tests
 
-* integration tests against a real postgres ([7acfce6](https://github.com/BrianVisas/fleetops-platform/commit/7acfce6f19dd25245c6ba7860dadbadc8ebaaf6a))
 * integration tests against a real postgres ([3abff4a](https://github.com/BrianVisas/fleetops-platform/commit/3abff4a855c55772d889c15b518cdc891f1c8e9e))
 * make integration tests independent of class order ([b36b9f2](https://github.com/BrianVisas/fleetops-platform/commit/b36b9f24fa059c8159bef05379ad4aced4e4c0ea))
 
 
 ### Documentation
 
-* add an engineering log ([62b257f](https://github.com/BrianVisas/fleetops-platform/commit/62b257fdc80b318c52bf5011849fd26a90f66bc9))
 * add an engineering log ([ac2c2b1](https://github.com/BrianVisas/fleetops-platform/commit/ac2c2b1c5da415db2221966bbe12d173ed8a397d))
 * **adr:** ADR-0005 image publishing and versioning ([caf83a8](https://github.com/BrianVisas/fleetops-platform/commit/caf83a814c2724025d18a4b566b954215e1525c6))
 * **security:** record the second triage ([6ce7ae2](https://github.com/BrianVisas/fleetops-platform/commit/6ce7ae27b3194475e9857421bd22ecea999f85db))

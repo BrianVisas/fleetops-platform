@@ -1,4 +1,5 @@
 | [EL-016](#el-016-a-pinned-action-version-that-no-longer-existed) | A pinned action version that no longer existed | supply chain | fixed |
+| [EL-017](#el-017-five-changes-appeared-twice-in-the-first-changelog) | Five changes appeared twice in the first changelog | release | fixed |
 # Engineering log
 
 Problems hit while building FleetOps, what caused them, and how each fix was
@@ -527,3 +528,38 @@ Dependabot can still update. The local scan script pins `aquasec/trivy:0.76.2` a
 **Lesson.** Pin third-party actions to a commit SHA, not a tag. A tag that fails to
 resolve fails loudly; a tag that has been moved runs whatever it now points to. And
 the tools that guard the pipeline are part of its supply chain too.
+
+---
+
+## EL-017: Five changes appeared twice in the first changelog
+
+2026-11-09 · release · fixed in the release cleanup PR
+
+**Symptom.** The release notes and `CHANGELOG.md` for v0.2.0 listed five changes
+twice, with different commits, for example:
+
+```
+* coverage gates and go linting (37e6c06)
+* coverage gates and go linting (b96a690)
+```
+
+**Root cause.** Pull requests had been merged with merge commits. GitHub writes
+the pull request's title into the merge commit's message, and those titles are
+Conventional Commits, so release-please counted each change once for the original
+commit and again for the merge commit. The first SHA of each pair (`186ba42`,
+`37e6c06`, `6ed2463`, `7acfce6`, `62b257f`) is a merge commit.
+
+**Fix.** The repository now allows squash merging only, with the pull request
+title as the commit title and the individual commit messages kept in the body, so
+each pull request lands as exactly one Conventional Commit. The five duplicate
+lines were removed from `CHANGELOG.md` and from the v0.2.0 release notes. The
+`6cd1af3` entry stays: it is a merge commit too, but the only one that describes
+the security scanning pull request as a whole.
+
+**Verification.** The repository settings report squash merging as the only
+method. The release pull request for v0.2.0 itself landed as a single commit
+(`85c86d5`), and the cleaned release notes list each change once.
+
+**Lesson.** The merge strategy is part of the release pipeline. Any tool that
+reads history, from changelog generators to `git bisect`, is only as clean as the
+history it reads.
