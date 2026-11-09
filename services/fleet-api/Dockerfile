@@ -1,5 +1,8 @@
 # ---- build ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+# A jar is the same on every architecture, so the Maven stage runs once, on the
+# build machine's own architecture ($BUILDPLATFORM), even for an arm64 image.
+# Only the runtime stage below is built per target platform. See ADR-0005.
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 
 # Copy the descriptor first so dependency resolution is cached separately from

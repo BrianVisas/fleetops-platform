@@ -2,13 +2,19 @@
 # The Go toolchain version here decides which stdlib is compiled into the binary,
 # so it is a security input, not a convenience. This service has no third-party
 # dependencies at all, which is why every one of its 22 findings was stdlib.
-FROM golang:1.27-alpine AS build
+#
+# The build stage runs on the build machine's own architecture ($BUILDPLATFORM)
+# and cross-compiles for the target, so an arm64 image costs no emulated
+# compilation. See ADR-0005.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /build
 
 COPY go.mod ./
 COPY *.go ./
 
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /vehicle-sim .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" -o /vehicle-sim .
 
 # ---- run ----
 FROM alpine:3.24
