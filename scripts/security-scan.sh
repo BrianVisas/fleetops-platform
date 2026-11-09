@@ -14,7 +14,7 @@ echo "=== secrets (gitleaks) ==="
 if command -v gitleaks > /dev/null; then
   gitleaks detect --redact --no-banner || failures=$((failures + 1))
 else
-  docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+  docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.0 \
     detect --source=/repo --redact --no-banner || failures=$((failures + 1))
 fi
 
@@ -24,7 +24,7 @@ echo "=== IaC and config (trivy fs) ==="
 # gets rate-limited. Dependency vulnerabilities come from the image scan below
 # and from govulncheck. See docs/SECURITY_POLICY.md.
 docker run --rm -v "$PWD:/repo" -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-  aquasec/trivy:latest fs /repo \
+  aquasec/trivy:0.76.2 fs /repo \
   --scanners misconfig,secret --offline-scan --severity HIGH,CRITICAL --exit-code 1 \
   || failures=$((failures + 1))
 
@@ -48,7 +48,7 @@ for service in fleet-api telemetry-ingest vehicle-sim; do
     -v "$PWD:/repo:ro" \
     -v "$HOME/.cache/trivy:/root/.cache/trivy" \
     -e "TRIVY_IGNOREFILE=$IGNORE_IN_CONTAINER" \
-    aquasec/trivy:latest image "fleetops/$service:scan" \
+    aquasec/trivy:0.76.2 image "fleetops/$service:scan" \
     --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --exit-on-eol 1 \
     || failures=$((failures + 1))
 done
