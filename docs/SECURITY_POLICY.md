@@ -139,6 +139,14 @@ Dependabot covers the image tags as `docker` updates, the toolchain line as
 `gomod` updates, and the Spring Boot parent as a `maven` update. The reason to review by hand anyway is that Dependabot proposes a
 bump and a human still has to merge it.
 
+## The scanners are part of the supply chain
+
+Third-party GitHub Actions are pinned to a full commit SHA, with the version in a
+comment, never to a tag alone. In CVE-2026-33634 (19 March 2026) the trivy-action
+version tags were force-pushed to malicious commits; a SHA cannot be moved like
+that. The local scan script likewise pins its scanner images to versions instead
+of `:latest`. See EL-016.
+
 ## Not used, and why
 
 **OWASP Dependency-Check.** Needs an NVD API key and a long database download to

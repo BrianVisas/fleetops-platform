@@ -1,3 +1,4 @@
+| [EL-016](#el-016-a-pinned-action-version-that-no-longer-existed) | A pinned action version that no longer existed | supply chain | fixed |
 # Engineering log
 
 Problems hit while building FleetOps, what caused them, and how each fix was
@@ -491,3 +492,38 @@ warning, and every scan reported clean.
 
 **Lesson.** Read the warnings, not just the count. The most dangerous scan result
 is a clean one that has no data behind it.
+
+---
+
+## EL-016: A pinned action version that no longer existed
+
+2026-11-06 · supply chain · fixed in the security PR (`ci/4-security-scans`)
+
+**Symptom.** On the security workflow's first run on GitHub, every job using
+`aquasecurity/trivy-action@0.36.0` failed in 2 to 7 seconds, during job setup,
+before any step ran. The jobs that do not use the action passed.
+
+**Root cause.** The tag `0.36.0` does not exist; the release is `v0.36.0`. The
+workflow had been written from the action's older, unprefixed tag naming without
+checking. The reason the naming changed is the more important finding: in
+CVE-2026-33634, on 19 March 2026, an attacker force-pushed 76 of the action's 77
+version tags to malicious commits that stole CI secrets, and the releases were
+re-published afterwards. A version tag is a movable pointer. Anyone pinned to one
+of those tags ran the attacker's code without changing a line of their workflow.
+
+**Exposure.** None. The repository was created in September 2026, the security
+workflow never ran on GitHub before this run, and the local `aquasec/trivy:latest`
+pulls (October and November) were months after the malicious images were removed
+from Docker Hub.
+
+**Fix.** The action is pinned to the full commit SHA of `v0.36.0`, with the version
+in a comment (`@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0`), which
+Dependabot can still update. The local scan script pins `aquasec/trivy:0.76.2` and
+`zricethezav/gitleaks:v8.30.0` instead of `:latest`.
+
+**Verification.** The tag list of `aquasecurity/trivy-action` shows `v0.36.0` at
+`ed142fd`. CI on the security PR runs the pinned action.
+
+**Lesson.** Pin third-party actions to a commit SHA, not a tag. A tag that fails to
+resolve fails loudly; a tag that has been moved runs whatever it now points to. And
+the tools that guard the pipeline are part of its supply chain too.
