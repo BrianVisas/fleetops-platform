@@ -66,7 +66,7 @@ jobs:
       matrix:
         service: [fleet-api, telemetry-ingest, vehicle-sim]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # QEMU runs the arm64 runtime stages (apk/apt, adduser). Compilation does
       # not need it: the build stages run on $BUILDPLATFORM and cross-compile.
