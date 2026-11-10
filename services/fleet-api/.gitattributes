@@ -1,2 +1,6 @@
+# mvnw must keep LF line endings or the shell cannot run it.
 /mvnw text eol=lf
-*.cmd text eol=crlf
+# mvnw.cmd is stored byte for byte as the Maven wrapper ships it (CRLF), with no
+# conversion. Dependabot rewrites it on every wrapper bump, and a conversion rule
+# made git report it as modified after every checkout since #30.
+*.cmd -text

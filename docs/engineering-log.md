@@ -1,5 +1,3 @@
-| [EL-016](#el-016-a-pinned-action-version-that-no-longer-existed) | A pinned action version that no longer existed | supply chain | fixed |
-| [EL-017](#el-017-five-changes-appeared-twice-in-the-first-changelog) | Five changes appeared twice in the first changelog | release | fixed |
 # Engineering log
 
 Problems hit while building FleetOps, what caused them, and how each fix was
@@ -33,6 +31,10 @@ Every entry follows the same structure:
 | [EL-013](#el-013-main-could-not-build-the-telemetry-ingest-image) | main could not build the telemetry-ingest image | build | fixed |
 | [EL-014](#el-014-ci-would-have-scanned-with-an-old-go) | CI would have scanned with an old Go | CI | fixed |
 | [EL-015](#el-015-zero-findings-on-an-unsupported-os) | Zero findings on an unsupported OS | security | fixed |
+| [EL-016](#el-016-a-pinned-action-version-that-no-longer-existed) | A pinned action version that no longer existed | supply chain | fixed |
+| [EL-017](#el-017-five-changes-appeared-twice-in-the-first-changelog) | Five changes appeared twice in the first changelog | release | fixed |
+| [EL-018](#el-018-ten-dependency-prs-in-24-seconds) | Ten dependency PRs in 24 seconds | dependencies | fixed |
+| [EL-019](#el-019-ci-and-the-image-built-with-different-maven-versions) | CI and the image built with different Maven versions | build | fixed |
 
 ---
 
@@ -563,3 +565,80 @@ method. The release pull request for v0.2.0 itself landed as a single commit
 **Lesson.** The merge strategy is part of the release pipeline. Any tool that
 reads history, from changelog generators to `git bisect`, is only as clean as the
 history it reads.
+
+---
+
+## EL-018: Ten dependency PRs in 24 seconds
+
+2026-11-10 · dependencies · fixed in #29
+
+**Symptom.** Merging the security scanning PR (#14) put `.github/dependabot.yml`
+on `main` for the first time. Dependabot opened ten pull requests (#15 to #24)
+between 20:26:52 and 20:27:16. Four bumped GitHub Actions one at a time, two
+bumped the two halves of the same testcontainers-go release, and two proposed a
+new JDK by different routes:
+
+```
+bump maven from 3.9-eclipse-temurin-21 to 3.9-eclipse-temurin-26
+bump eclipse-temurin from 21-jre to 25-jre
+```
+
+**Root cause.** The first configuration had no groups, no cooldown and no ignore
+rules, so Dependabot did what that configuration asks for: one pull request per
+outdated dependency, for every release whatever its age, all at once because
+everything was outdated at once. The two JDK pull requests show why one PR per
+package is dangerous and not only noisy. Merged separately, they would have built
+the jar on JDK 26, which is not an LTS release, and run it on JDK 25.
+
+**Fix.** #29 groups updates by kind (`spring`, `maven-build`, `go-dependencies`,
+`actions`), gives every ecosystem a 14-day cooldown, and ignores JDK majors, which
+are an ADR decision. The file was validated against the SchemaStore schema for
+`dependabot.yml`, together with a deliberately broken copy to prove the check
+could fail. The two JDK pull requests were closed by hand.
+
+**Verification.** Dependabot re-ran when #29 merged. It opened two grouped pull
+requests, #30 (`maven-build`: the Maven wrapper to 3.10.0, JaCoCo to 0.8.16) and
+#31 (`actions`: four updates), and closed the six they replaced. Neither JDK bump
+came back. testcontainers-go 0.45.0, published on 2026-11-05, was held back by the
+cooldown; its two pull requests were closed, and it returns as one grouped update
+once it is 14 days old. #30 was re-verified locally before merging (20 unit and 10
+integration tests, coverage checks met), and both groups merged with CI green.
+
+**Lesson.** Configure Dependabot before its first run, not after. Its defaults
+make sure no update is ever missed. A team needs updates it can review: grouped,
+a little delayed, and with the decisions that belong to a person, like the JDK,
+kept out of the routine flow.
+
+---
+
+## EL-019: CI and the image built with different Maven versions
+
+2026-11-10 · build · fixed in the Maven wrapper image PR
+
+**Symptom.** Triaging #30, which moved the Maven wrapper from 3.9.16 to 3.10.0,
+showed that the fleet-api image did not use the wrapper at all. CI runs `./mvnw`;
+the Dockerfile ran `mvn` from the `maven:3.9-eclipse-temurin-21` builder image.
+Once #30 merged, CI built with Maven 3.10.0 and every published image with 3.9.x.
+
+**Root cause.** One tool had two sources of truth, and only one of them was being
+updated. Dependabot updates the wrapper through the `maven` ecosystem. The builder
+image was on the ignore list on purpose (EL-018: the only bump it had proposed was
+the JDK 26 tag), so its Maven could never leave 3.9. Nothing failed, because the
+project builds with both versions, and that is exactly why the drift was
+invisible.
+
+**Fix.** The image builds with the wrapper. The builder is now
+`eclipse-temurin:21-jdk`, a plain JDK, and the build stage runs `./mvnw` against
+the same `.mvn/wrapper/maven-wrapper.properties` as CI, printing the version with
+`./mvnw -v` first. The `maven` ignore rule left `dependabot.yml` with the image.
+The existing `eclipse-temurin` rule now covers the builder and the runtime stage
+together, so a JDK major cannot reach one stage without the other.
+
+**Verification.** The image build log prints `Apache Maven 3.10.0` from the
+version step, the version in `maven-wrapper.properties`. The pull request's
+multi-arch image build and the security workflow's image scan both passed with
+the new build stage.
+
+**Lesson.** Pin a tool in one place and have every environment read it from
+there. "CI and the image use the same Maven" had been true by coincidence, and
+coincidences are what dependency updates break.

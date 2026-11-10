@@ -1,17 +1,28 @@
 # ---- build ----
-# A jar is the same on every architecture, so the Maven stage runs once, on the
+# A jar is the same on every architecture, so the build stage runs once, on the
 # build machine's own architecture ($BUILDPLATFORM), even for an arm64 image.
 # Only the runtime stage below is built per target platform. See ADR-0005.
-FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
+#
+# The builder is a plain JDK, and Maven comes from the wrapper (mvnw and
+# .mvn/wrapper/maven-wrapper.properties), the same one CI runs. With a maven:*
+# image the image was built with whatever Maven that image shipped, while CI used
+# the wrapper's version; the two had already drifted apart (3.9.x and 3.10.0)
+# when this changed. See EL-019.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
 WORKDIR /build
 
-# Copy the descriptor first so dependency resolution is cached separately from
-# the source: editing a Java file then does not re-download the world.
-COPY pom.xml .
-RUN mvn -B dependency:go-offline
+# Wrapper and descriptor first, so the Maven download and dependency resolution
+# are cached separately from the source: editing a Java file then does not
+# re-download the world. `-v` prints the Maven version into the build log, which
+# is how you check which Maven built an image. The wrapper downloads Maven with
+# curl or wget if the image has them and falls back to Java otherwise, so the
+# JDK image needs nothing extra installed.
+COPY mvnw pom.xml ./
+COPY .mvn .mvn
+RUN ./mvnw -B -v && ./mvnw -B -ntp dependency:go-offline
 
 COPY src ./src
-RUN mvn -B -DskipTests package
+RUN ./mvnw -B -ntp -DskipTests package
 
 # ---- run ----
 FROM eclipse-temurin:21-jre
