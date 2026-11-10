@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.3.0](https://github.com/BrianVisas/fleetops-platform/compare/v0.2.0...v0.3.0) (2026-11-10)
+
+
+### Features
+
+* **fleet-api:** auto-pause a rollout when failures pass a threshold ([#38](https://github.com/BrianVisas/fleetops-platform/issues/38)) ([16bed8f](https://github.com/BrianVisas/fleetops-platform/commit/16bed8fd1f107e5599ddbf9636e00b18911c9a99))
+
+
+### CI and delivery
+
+* control how dependencies and runners change ([#29](https://github.com/BrianVisas/fleetops-platform/issues/29)) ([2e7f73e](https://github.com/BrianVisas/fleetops-platform/commit/2e7f73eac5038ca902bd0d40657fcc2256e8be82))
+
+
+### Build
+
+* **deps:** bump the actions group with 4 updates ([#31](https://github.com/BrianVisas/fleetops-platform/issues/31)) ([e8f5735](https://github.com/BrianVisas/fleetops-platform/commit/e8f5735831fae4aa4526cface4400973cafc6da7))
+* **deps:** bump the maven-build group in /services/fleet-api with 2 updates ([db70d6e](https://github.com/BrianVisas/fleetops-platform/commit/db70d6e34e59a43730e6ecc43cba406229756571))
+* **fleet-api:** build the image with the Maven wrapper ([#32](https://github.com/BrianVisas/fleetops-platform/issues/32)) ([1e91c58](https://github.com/BrianVisas/fleetops-platform/commit/1e91c583acdf5f96ad2cb19a7b7eca0387db3eaa))
+
+
+### Tests
+
+* acceptance scenarios for releases, rollouts and update polling ([#37](https://github.com/BrianVisas/fleetops-platform/issues/37)) ([1c1e67d](https://github.com/BrianVisas/fleetops-platform/commit/1c1e67de1f5fc161463fadd364c7309d9febc55e))
+* acceptance test bake-off for vehicle management ([#33](https://github.com/BrianVisas/fleetops-platform/issues/33)) ([173eabf](https://github.com/BrianVisas/fleetops-platform/commit/173eabff08157bf7da7338e9b75d4e5990d2b2e5))
+* keep three acceptance suites, add telemetry scenarios and a traceability gate ([#34](https://github.com/BrianVisas/fleetops-platform/issues/34)) ([818531d](https://github.com/BrianVisas/fleetops-platform/commit/818531d124b3e529edc2bfbba3725c6e68189da8))
+
+
+### Documentation
+
+* restore ADR-0001 and ADR-0002 and remove duplicate changelog entries ([#27](https://github.com/BrianVisas/fleetops-platform/issues/27)) ([52055fa](https://github.com/BrianVisas/fleetops-platform/commit/52055fab4b08ad37d6f4ac718040d56dad0247b8))
+
 ## [0.2.0](https://github.com/BrianVisas/fleetops-platform/compare/v0.1.0...v0.2.0) (2026-11-09)
 
 
