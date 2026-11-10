@@ -1,4 +1,4 @@
-"""Steps shared by features/rollouts.feature (#4) and features/updates.feature (#5)."""
+"""Steps shared by features/rollouts.feature (#4), updates.feature (#5) and auto_pause.feature (#6)."""
 import secrets
 
 from pytest_bdd import given, parsers, then, when
@@ -95,6 +95,18 @@ def vehicle_failed(api, world, number):
     assert response.status_code == 202, response.text
 
 
+@given(parsers.parse("vehicles {first:d} to {last:d} have installed the update successfully"))
+def vehicles_installed(api, world, first, last):
+    for number in range(first, last + 1):
+        vehicle_installed(api, world, number)
+
+
+@given(parsers.parse("vehicles {first:d} to {last:d} have failed to install the update"))
+def vehicles_failed(api, world, first, last):
+    for number in range(first, last + 1):
+        vehicle_failed(api, world, number)
+
+
 # ---- When ----
 
 @when(parsers.parse("I create a rollout of the release to {percentage:d}%"))
@@ -169,3 +181,9 @@ def vehicle_on_release(api, world, number):
 def vehicle_still_on(api, world, number, version):
     response = api.get(vehicle_id(world, number))
     assert response.json()["swVersion"] == version
+
+
+@then(parsers.parse("the rollout's pause reason is {reason}"))
+def rollout_pause_reason(api, world, reason):
+    body = counts(api, world)
+    assert body.get("pauseReason") == reason, body

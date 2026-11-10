@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +36,11 @@ class UpdateServiceTest {
 
     @Mock
     private SoftwareReleaseRepository releases;
+
+    // The real policy with the production defaults, so these tests check the
+    // service and the thresholds together.
+    @Spy
+    private AutoPausePolicy autoPause = new AutoPausePolicy(0.20, 5);
 
     @InjectMocks
     private UpdateService service;
@@ -117,6 +123,61 @@ class UpdateServiceTest {
 
         assertThat(rollout.getStatus()).isEqualTo(RolloutStatus.COMPLETED);
         verify(rollouts).save(rollout);
+    }
+
+    @Test
+    void tooManyFailuresPauseTheRollout() {
+        RolloutTarget target = target(TargetState.INSTALLING);
+        Rollout rollout = rollout(target.getRolloutId(), RolloutStatus.RUNNING);
+
+        when(targets.findFirstByVehicleIdAndStateIn(eqVehicle(), anyCollection())).thenReturn(Optional.of(target));
+        finished(target, 2, 3);
+        when(rollouts.findById(rollout.getId())).thenReturn(Optional.of(rollout));
+        when(targets.countByRolloutIdAndStateIn(eqRollout(target), anyCollection())).thenReturn(5L);
+
+        service.reportResult(vehicleId, new UpdateResultRequest("2.1.0", false));
+
+        assertThat(rollout.getStatus()).isEqualTo(RolloutStatus.PAUSED);
+        assertThat(rollout.getPauseReason()).isEqualTo(PauseReason.FAILURE_THRESHOLD);
+        verify(rollouts).save(rollout);
+    }
+
+    @Test
+    void failuresAreNotJudgedBeforeEnoughHaveFinished() {
+        RolloutTarget target = target(TargetState.INSTALLING);
+
+        when(targets.findFirstByVehicleIdAndStateIn(eqVehicle(), anyCollection())).thenReturn(Optional.of(target));
+        finished(target, 4, 0);
+        when(targets.countByRolloutIdAndStateIn(eqRollout(target), anyCollection())).thenReturn(6L);
+
+        service.reportResult(vehicleId, new UpdateResultRequest("2.1.0", false));
+
+        verify(rollouts, never()).findById(any());
+        verify(rollouts, never()).save(any(Rollout.class));
+    }
+
+    @Test
+    void aRolloutPausedByTheOperatorKeepsItsReason() {
+        RolloutTarget target = target(TargetState.INSTALLING);
+        Rollout rollout = rollout(target.getRolloutId(), RolloutStatus.RUNNING);
+        rollout.pause(PauseReason.MANUAL);
+
+        when(targets.findFirstByVehicleIdAndStateIn(eqVehicle(), anyCollection())).thenReturn(Optional.of(target));
+        finished(target, 3, 2);
+        when(rollouts.findById(rollout.getId())).thenReturn(Optional.of(rollout));
+        when(targets.countByRolloutIdAndStateIn(eqRollout(target), anyCollection())).thenReturn(5L);
+
+        service.reportResult(vehicleId, new UpdateResultRequest("2.1.0", false));
+
+        assertThat(rollout.getPauseReason()).isEqualTo(PauseReason.MANUAL);
+        verify(rollouts, never()).save(any(Rollout.class));
+    }
+
+    private void finished(RolloutTarget target, long failed, long succeeded) {
+        when(targets.countByRolloutIdAndState(eqRollout(target), org.mockito.ArgumentMatchers.eq(TargetState.FAILED)))
+                .thenReturn(failed);
+        when(targets.countByRolloutIdAndState(eqRollout(target), org.mockito.ArgumentMatchers.eq(TargetState.SUCCEEDED)))
+                .thenReturn(succeeded);
     }
 
     private UUID eqVehicle() {
