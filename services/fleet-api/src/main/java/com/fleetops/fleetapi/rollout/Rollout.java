@@ -28,6 +28,11 @@ public class Rollout {
     @Column(nullable = false, length = 16)
     private RolloutStatus status;
 
+    // Set exactly when the rollout is paused; the database enforces that (V3).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pause_reason", length = 32)
+    private PauseReason pauseReason;
+
     @Column(nullable = false)
     private int percentage;
 
@@ -62,6 +67,10 @@ public class Rollout {
         return status;
     }
 
+    public PauseReason getPauseReason() {
+        return pauseReason;
+    }
+
     public int getPercentage() {
         return percentage;
     }
@@ -77,6 +86,16 @@ public class Rollout {
     public void setStatus(RolloutStatus status) {
         this.status = status;
         this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void pause(PauseReason reason) {
+        this.pauseReason = reason;
+        setStatus(RolloutStatus.PAUSED);
+    }
+
+    public void resume() {
+        this.pauseReason = null;
+        setStatus(RolloutStatus.RUNNING);
     }
 
     public void setPercentage(int percentage) {

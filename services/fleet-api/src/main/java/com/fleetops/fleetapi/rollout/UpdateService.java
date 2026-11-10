@@ -10,6 +10,8 @@ import com.fleetops.fleetapi.vehicle.VehicleRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,19 +22,23 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UpdateService {
 
+    private static final Logger log = LoggerFactory.getLogger(UpdateService.class);
+
     private static final List<TargetState> OPEN_STATES = List.of(TargetState.PENDING, TargetState.INSTALLING);
 
     private final RolloutRepository rollouts;
     private final RolloutTargetRepository targets;
     private final VehicleRepository vehicles;
     private final SoftwareReleaseRepository releases;
+    private final AutoPausePolicy autoPause;
 
     public UpdateService(RolloutRepository rollouts, RolloutTargetRepository targets,
-            VehicleRepository vehicles, SoftwareReleaseRepository releases) {
+            VehicleRepository vehicles, SoftwareReleaseRepository releases, AutoPausePolicy autoPause) {
         this.rollouts = rollouts;
         this.targets = targets;
         this.vehicles = vehicles;
         this.releases = releases;
+        this.autoPause = autoPause;
     }
 
     /**
@@ -81,7 +87,31 @@ public class UpdateService {
         }
         targets.save(target);
 
+        // Pause before completing: a rollout whose last result tips it over the
+        // threshold ends up PAUSED, which is the state an operator has to look at.
+        pauseIfTooManyFailed(target.getRolloutId());
         completeRolloutIfFinished(target.getRolloutId());
+    }
+
+    /**
+     * Issue #6. Checked after every result, success or failure: a success can
+     * be the result that brings the number of finished installations up to the
+     * minimum while the share of failures is already too high.
+     */
+    private void pauseIfTooManyFailed(UUID rolloutId) {
+        long failed = targets.countByRolloutIdAndState(rolloutId, TargetState.FAILED);
+        long finished = failed + targets.countByRolloutIdAndState(rolloutId, TargetState.SUCCEEDED);
+        if (!autoPause.shouldPause(failed, finished)) {
+            return;
+        }
+        rollouts.findById(rolloutId).ifPresent(rollout -> {
+            if (rollout.getStatus() == RolloutStatus.RUNNING) {
+                rollout.pause(PauseReason.FAILURE_THRESHOLD);
+                rollouts.save(rollout);
+                log.warn("rollout {} paused itself: {} of {} finished installations failed",
+                        rolloutId, failed, finished);
+            }
+        });
     }
 
     private void completeRolloutIfFinished(UUID rolloutId) {

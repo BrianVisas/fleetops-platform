@@ -40,3 +40,12 @@ logging:
   level:
     root: INFO
     com.fleetops: DEBUG
+
+fleetops:
+  rollout:
+    auto-pause:
+      # A rollout pauses itself when more than this share of its finished
+      # installations failed (issue #6) ...
+      failure-threshold: ${ROLLOUT_FAILURE_THRESHOLD:0.20}
+      # ... but only once at least this many have finished.
+      minimum-finished: ${ROLLOUT_MINIMUM_FINISHED:5}

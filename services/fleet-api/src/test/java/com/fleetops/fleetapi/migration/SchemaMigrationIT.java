@@ -33,12 +33,12 @@ class SchemaMigrationIT extends PostgresIT {
     }
 
     @Test
-    void bothMigrationsAreRecordedAsApplied() {
+    void everyMigrationIsRecordedAsApplied() {
         List<String> versions = jdbc.queryForList(
                 "select version from flyway_schema_history where success = true order by installed_rank",
                 String.class);
 
-        assertThat(versions).containsExactly("1", "2");
+        assertThat(versions).containsExactly("1", "2", "3");
     }
 
     @Test
@@ -90,5 +90,56 @@ class SchemaMigrationIT extends PostgresIT {
                 "insert into rollout (id, release_id, status, percentage) values (?, ?, ?, ?)",
                 UUID.randomUUID(), releaseId, "RUNNING", 150))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void aPausedRolloutMustSayWhy() {
+        UUID releaseId = release("9.9.6");
+
+        assertThatThrownBy(() -> jdbc.update(
+                "insert into rollout (id, release_id, status, percentage) values (?, ?, ?, ?)",
+                UUID.randomUUID(), releaseId, "PAUSED", 50))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void onlyAPausedRolloutHasAPauseReason() {
+        UUID releaseId = release("9.9.5");
+
+        assertThatThrownBy(() -> jdbc.update(
+                "insert into rollout (id, release_id, status, pause_reason, percentage) values (?, ?, ?, ?, ?)",
+                UUID.randomUUID(), releaseId, "RUNNING", "MANUAL", 50))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void theDatabaseRejectsAnUnknownPauseReason() {
+        UUID releaseId = release("9.9.4");
+
+        assertThatThrownBy(() -> jdbc.update(
+                "insert into rollout (id, release_id, status, pause_reason, percentage) values (?, ?, ?, ?, ?)",
+                UUID.randomUUID(), releaseId, "PAUSED", "BORED", 50))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void aPausedRolloutWithAKnownReasonIsAccepted() {
+        UUID releaseId = release("9.9.3");
+
+        jdbc.update(
+                "insert into rollout (id, release_id, status, pause_reason, percentage) values (?, ?, ?, ?, ?)",
+                UUID.randomUUID(), releaseId, "PAUSED", "FAILURE_THRESHOLD", 50);
+
+        assertThat(jdbc.queryForObject("select count(*) from rollout where pause_reason = 'FAILURE_THRESHOLD'",
+                Integer.class)).isEqualTo(1);
+    }
+
+    private UUID release(String version) {
+        UUID releaseId = UUID.randomUUID();
+        jdbc.update("""
+                insert into software_release (id, version, target_model, checksum, size_bytes)
+                values (?, ?, ?, ?, ?)""",
+                releaseId, version, "ID.4", "abc", 1024);
+        return releaseId;
     }
 }

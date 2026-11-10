@@ -114,6 +114,20 @@ class RolloutServiceTest {
         Rollout paused = service.pause(rollout.getId());
 
         assertThat(paused.getStatus()).isEqualTo(RolloutStatus.PAUSED);
+        assertThat(paused.getPauseReason()).isEqualTo(PauseReason.MANUAL);
+        verify(rollouts).save(rollout);
+    }
+
+    @Test
+    void resumeClearsThePauseReason() {
+        Rollout rollout = runningRollout();
+        rollout.pause(PauseReason.FAILURE_THRESHOLD);
+        when(rollouts.findById(rollout.getId())).thenReturn(Optional.of(rollout));
+
+        Rollout resumed = service.resume(rollout.getId());
+
+        assertThat(resumed.getStatus()).isEqualTo(RolloutStatus.RUNNING);
+        assertThat(resumed.getPauseReason()).isNull();
         verify(rollouts).save(rollout);
     }
 

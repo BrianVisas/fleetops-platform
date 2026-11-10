@@ -64,17 +64,21 @@ public class RolloutService {
     public Rollout pause(UUID rolloutId) {
         Rollout rollout = get(rolloutId);
         if (rollout.getStatus() == RolloutStatus.RUNNING) {
-            rollout.setStatus(RolloutStatus.PAUSED);
+            rollout.pause(PauseReason.MANUAL);
             rollouts.save(rollout);
         }
         return rollout;
     }
 
+    /**
+     * Resumes a paused rollout, whatever paused it. A rollout that paused itself
+     * and is still over the failure threshold pauses again at its next result.
+     */
     @Transactional
     public Rollout resume(UUID rolloutId) {
         Rollout rollout = get(rolloutId);
         if (rollout.getStatus() == RolloutStatus.PAUSED) {
-            rollout.setStatus(RolloutStatus.RUNNING);
+            rollout.resume();
             rollouts.save(rollout);
         }
         return rollout;
