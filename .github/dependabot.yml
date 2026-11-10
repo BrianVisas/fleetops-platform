@@ -1,5 +1,20 @@
 version: 2
 
+# How dependency updates arrive, and why:
+#
+# - Grouped: one pull request per kind of change, not one per package. Ten PRs
+#   opened within a minute of this file first going live; most of them belonged
+#   together (four GitHub Actions bumps, two halves of one testcontainers-go bump).
+# - Cooled down: a new release waits before Dependabot proposes it. Compromised
+#   releases, like the trivy-action tags in CVE-2026-33634, are usually caught
+#   within days. Cooldown applies to version updates only; security updates are
+#   proposed immediately.
+# - JDK majors ignored: moving Java from 21 to another release changes the
+#   builder image, the runtime image and `java.version` together, and is decided
+#   in an ADR, not merged as a routine bump. Non-LTS releases are never wanted.
+#
+# See docs/SECURITY_POLICY.md.
+
 updates:
   - package-ecosystem: maven
     directory: /services/fleet-api
@@ -7,11 +22,15 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 14
     groups:
-      # One PR for the whole Spring Boot line instead of twenty: the parent and
-      # its managed dependencies move together anyway.
+      # The parent and its managed dependencies move together anyway.
       spring:
         patterns: ["org.springframework*"]
+      # Maven itself (the wrapper), its plugins, and JaCoCo.
+      maven-build:
+        patterns: ["org.apache.maven*", "org.jacoco*"]
 
   - package-ecosystem: gomod
     directory: /services/telemetry-ingest
@@ -19,19 +38,34 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 14
+    groups:
+      # Minor and patch updates together; a major version gets its own PR.
+      go-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: gomod
     directory: /services/vehicle-sim
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 14
 
-  # Pinned action majors go stale silently; this is how the pipeline stays current.
+  # Third-party actions are pinned to commit SHAs with the version in a comment;
+  # Dependabot updates both. See EL-016.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: docker
     directories:
@@ -41,3 +75,14 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 14
+    ignore:
+      # JDK majors are an ADR decision (see the header).
+      - dependency-name: "eclipse-temurin"
+        update-types: ["version-update:semver-major"]
+      # The builder tag 3.9-eclipse-temurin-21 floats: it already picks up every
+      # Maven 3.9.x and JDK 21 patch. Any other tag Dependabot proposes would
+      # change the Maven minor or the JDK, and both are deliberate changes. It
+      # proposed ...-temurin-26 (not an LTS release) the first time it ran.
+      - dependency-name: "maven"
