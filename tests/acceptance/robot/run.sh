@@ -7,4 +7,4 @@ python3 -m venv .venv
 # shellcheck source=/dev/null
 . .venv/bin/activate
 python3 -m pip install --quiet --disable-pip-version-check -r requirements.txt
-robot --outputdir reports --xunit xunit.xml "$@" vehicles.robot
+robot --outputdir reports --xunit xunit.xml --name Acceptance "$@" .

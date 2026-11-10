@@ -1,8 +1,9 @@
 name: acceptance
 
 # Black-box acceptance tests against the whole stack, built from this commit and
-# started with Compose. Three suites run the same customer scenarios while
-# ADR-0006 decides which one stays; see tests/acceptance/README.md.
+# started with Compose. Three suites run the same customer scenarios (ADR-0006),
+# and a traceability check proves that every customer issue is covered by them.
+# See tests/acceptance/README.md.
 #
 # No path filter: an acceptance result is about the system, and a workflow that
 # always reports can later become a required check (ADR-0001).
@@ -23,6 +24,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  traceability:
+    name: traceability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch the customer issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/issues?labels=customer&state=all&per_page=100" > "$RUNNER_TEMP/issues.json"
+
+      # The matrix also goes to the job summary, so it is readable on the run page.
+      - name: Every customer issue has acceptance tests in every suite
+        shell: bash
+        run: python3 tests/acceptance/check_traceability.py --issues "$RUNNER_TEMP/issues.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
   suite:
     name: acceptance (${{ matrix.suite }})
     runs-on: ubuntu-24.04
@@ -34,6 +55,7 @@ jobs:
     env:
       COMPOSE: docker compose -f deploy/compose/docker-compose.yml
       FLEET_API_URL: http://localhost:8080
+      TELEMETRY_URL: http://localhost:8081
     steps:
       - uses: actions/checkout@v7
 

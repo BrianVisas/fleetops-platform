@@ -7,9 +7,9 @@ from Phase 4) and talk to it only over HTTP. Nothing here imports service code.
 Every scenario is tagged with the customer issue it proves (`@issue-1`), so each
 issue can be traced to the tests that cover it.
 
-## Three suites, one decision
+## Three suites, one specification
 
-The same scenarios exist in three tools, for a time-boxed comparison:
+The same scenarios run in three tools (ADR-0006):
 
 | Suite | Language | Scenarios written in | HTTP client |
 |-------|----------|----------------------|-------------|
@@ -19,27 +19,43 @@ The same scenarios exist in three tools, for a time-boxed comparison:
 
 Cucumber and pytest-bdd read the same feature files: the Gherkin is the
 specification, and each suite only supplies the glue code behind it. Robot
-Framework has its own syntax, so its scenarios are written out again.
+Framework has its own syntax, so its tests repeat the scenarios with the same
+names and tags.
 
-Once the comparison is done, ADR-0006 records which one stays and why, and the
-other two are removed. Running three suites for good would triple the upkeep
-for no extra coverage.
+The three were scored against criteria fixed before the results; the scores,
+the decision and the rules that keep the suites in step are in ADR-0006.
 
-### Criteria, fixed before the results
+## Traceability
 
-1. **Readability for the customer.** Can someone who does not program read a
-   scenario and agree that it says what they asked for?
-2. **Glue code.** Lines of code behind the same scenarios.
-3. **Failure diagnostics.** When a test fails, does the report show the request
-   and the response, or only the assertion?
-4. **Run time in CI.** Tool setup plus execution, from the job logs.
-5. **Report.** What the HTML report shows without extra plugins.
-6. **Fit with the repository.** Toolchains already here (Java and Maven are;
-   Python arrives with the ML phase), and who maintains it.
-7. **Reuse.** Can the same suite run as the smoke test after each Argo CD sync
-   in Phase 4?
-8. **Market relevance.** How often the tool appears in German test automation
-   and DevOps job ads.
+`check_traceability.py` runs in CI next to the suites. It reads the customer
+issues from GitHub and the scenarios from `features/` and `robot/`, prints a
+matrix of issue against scenarios to the job summary, and fails when:
+
+- a customer issue has no scenario and is not listed in
+  `coverage-exceptions.txt` with a reason;
+- an issue in that list is covered now (the list only ever shrinks);
+- a scenario is tagged with an issue that is not a customer issue;
+- a scenario exists in the Gherkin files but not in Robot, or the other way round.
+
+To run it locally:
+
+```bash
+gh api "repos/BrianVisas/fleetops-platform/issues?labels=customer&state=all" > /tmp/issues.json
+python3 tests/acceptance/check_traceability.py --issues /tmp/issues.json
+```
+
+## Adding a scenario
+
+1. Write it in Gherkin, in the feature file for its issue, under that issue's
+   `@issue-N` tag.
+2. Add any new steps to the Cucumber step classes and to the pytest-bdd test
+   module for that feature. Steps used by several features live in
+   `VehicleSteps` (Cucumber, shared through `World`) and `conftest.py`
+   (pytest-bdd).
+3. Add a Robot test with exactly the same name to the matching `.robot` file.
+4. If the issue was in `coverage-exceptions.txt`, remove it.
+
+A failing step prints the full request and response in all three reports.
 
 ## Running locally
 
@@ -58,8 +74,8 @@ tests/acceptance/pytest-bdd/run.sh
 tests/acceptance/robot/run.sh
 ```
 
-`FLEET_API_URL` points the suites at another fleet-api (default
-`http://localhost:8080`).
+`FLEET_API_URL` and `TELEMETRY_URL` point the suites at another fleet-api and
+telemetry-ingest (defaults `http://localhost:8080` and `http://localhost:8081`).
 
 The scenarios do not reset the database. Each one creates its own vehicles with
 random VINs and model names, so they can run in any order, against a database

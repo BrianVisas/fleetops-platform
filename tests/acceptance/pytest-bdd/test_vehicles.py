@@ -3,27 +3,12 @@ import uuid
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from conftest import random_model, random_vin
+from conftest import random_model, random_vin, register
 
 scenarios("vehicles.feature")
 
 
-def register(api, world, model="ID.4", sw_version="1.0.0", vin=None):
-    vin = vin or random_vin()
-    response = api.register(vin, model, sw_version)
-    world["response"] = response
-    world["vehicle"] = {"vin": vin, "model": model, "swVersion": sw_version}
-    return response
-
-
 # ---- Given ----
-
-@given("a registered vehicle")
-def a_registered_vehicle(api, world):
-    response = register(api, world)
-    assert response.status_code == 201, response.text
-    world["vehicle"]["id"] = response.json()["id"]
-
 
 @given(parsers.parse("{first:d} registered vehicles of one model and {second:d} of another"))
 def vehicles_of_two_models(api, world, first, second):
@@ -86,24 +71,12 @@ def list_first_model(world, size):
 
 # ---- Then ----
 
-@then(parsers.parse("the response status is {status:d}"))
-def response_status(world, status):
-    response = world["response"]
-    assert response.status_code == status, f"{response.status_code}: {response.text}"
-
-
 @then("the response contains the new vehicle with an id")
 def response_has_new_vehicle(world):
     body = world["response"].json()
     uuid.UUID(body["id"])
     assert body["vin"] == world["vehicle"]["vin"]
     assert world["response"].headers["Location"].endswith("/api/v1/vehicles/" + body["id"])
-
-
-@then(parsers.parse('the error message mentions "{text}"'))
-def error_mentions(world, text):
-    message = world["response"].json()["message"]
-    assert text in message, message
 
 
 @then("the response shows the vehicle's VIN, model and software version")

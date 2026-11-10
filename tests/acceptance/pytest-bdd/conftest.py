@@ -1,12 +1,16 @@
-"""Shared fixtures: where the system under test is, and per-scenario state."""
+"""Shared fixtures and steps: where the system under test is, per-scenario
+state, and the steps more than one feature uses."""
 import os
 import random
 import string
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
+from pytest_bdd import given, parsers, then
 
 FLEET_API_URL = os.environ.get("FLEET_API_URL", "http://localhost:8080").rstrip("/")
+TELEMETRY_URL = os.environ.get("TELEMETRY_URL", "http://localhost:8081").rstrip("/")
 
 # Digits and capitals without I, O and Q: the characters a real VIN may use.
 VIN_CHARS = "".join(c for c in string.ascii_uppercase + string.digits if c not in "IOQ")
@@ -26,9 +30,8 @@ class FleetApi:
     """Thin client for fleet-api. Every call returns the raw response, so the
     steps decide what counts as success."""
 
-    def __init__(self):
-        self.http = requests.Session()
-        self.http.headers["Accept"] = "application/json"
+    def __init__(self, http):
+        self.http = http
 
     def register(self, vin, model, sw_version):
         return self.http.post(f"{FLEET_API_URL}/api/v1/vehicles", timeout=10,
@@ -49,12 +52,88 @@ class FleetApi:
                              params={"model": model, "page": page, "size": size})
 
 
+class TelemetryApi:
+    """Thin client for telemetry-ingest."""
+
+    def __init__(self, http):
+        self.http = http
+
+    @staticmethod
+    def reading(vehicle_id, speed=50.0, minutes_ago=0):
+        recorded_at = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+        return {
+            "vehicleId": vehicle_id,
+            "recordedAt": recorded_at.isoformat().replace("+00:00", "Z"),
+            "speedKmh": speed,
+            "batteryTemp": 25.0,
+            "voltage": 400.0,
+        }
+
+    def send(self, body):
+        return self.http.post(f"{TELEMETRY_URL}/telemetry", json=body, timeout=10)
+
+    def latest(self, vehicle_id):
+        return self.http.get(f"{TELEMETRY_URL}/vehicles/{vehicle_id}/latest", timeout=10)
+
+
 @pytest.fixture
-def api():
-    return FleetApi()
+def http():
+    session = requests.Session()
+    session.headers["Accept"] = "application/json"
+    return session
+
+
+@pytest.fixture
+def api(http):
+    return FleetApi(http)
+
+
+@pytest.fixture
+def telemetry(http):
+    return TelemetryApi(http)
 
 
 @pytest.fixture
 def world():
     """What one scenario remembers between its steps."""
     return {}
+
+
+def register(api, world, model="ID.4", sw_version="1.0.0", vin=None):
+    vin = vin or random_vin()
+    response = api.register(vin, model, sw_version)
+    world["response"] = response
+    world["vehicle"] = {"vin": vin, "model": model, "swVersion": sw_version}
+    return response
+
+
+def pytest_bdd_step_error(request, feature, scenario, step, step_func, step_func_args, exception):
+    """Print the last HTTP exchange when a step fails. pytest captures it, and
+    the HTML report shows it next to the failure."""
+    response = request.getfixturevalue("world").get("response")
+    if response is not None:
+        print(f"--- last request: {response.request.method} {response.request.url}")
+        print(f"{response.request.body!r}")
+        print(f"--- last response: {response.status_code}")
+        print(response.text)
+
+
+# ---- Steps used by more than one feature ----
+
+@given("a registered vehicle")
+def a_registered_vehicle(api, world):
+    response = register(api, world)
+    assert response.status_code == 201, response.text
+    world["vehicle"]["id"] = response.json()["id"]
+
+
+@then(parsers.parse("the response status is {status:d}"))
+def response_status(world, status):
+    response = world["response"]
+    assert response.status_code == status, f"{response.status_code}: {response.text}"
+
+
+@then(parsers.parse('the error message mentions "{text}"'))
+def error_mentions(world, text):
+    message = world["response"].json()["message"]
+    assert text in message, message

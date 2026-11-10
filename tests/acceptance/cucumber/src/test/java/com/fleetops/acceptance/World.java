@@ -11,9 +11,6 @@ import java.util.Map;
  */
 public class World {
 
-    public static final String FLEET_API_URL =
-            System.getenv().getOrDefault("FLEET_API_URL", "http://localhost:8080");
-
     // Digits and capitals without I, O and Q: the characters a real VIN may use.
     private static final String VIN_CHARS = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
     private static final String MODEL_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -23,6 +20,7 @@ public class World {
     public final Map<String, String> vehicle = new HashMap<>();
     public String firstModel;
     public int pageSize;
+    public String unknownVehicleId;
 
     public static String randomVin() {
         return random(VIN_CHARS, 17);

@@ -1,67 +1,49 @@
 package com.fleetops.acceptance;
 
-import static io.restassured.RestAssured.given;
-
-import io.restassured.http.ContentType;
 import io.restassured.response.Response;
-import io.restassured.specification.RequestSpecification;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Thin client for fleet-api. Every call returns the raw response, so the steps
- * decide what counts as success. Failed requests are logged in full.
+ * decide what counts as success.
  */
-public final class FleetApi {
+public class FleetApi {
 
-    private FleetApi() {
+    private static final String URL =
+            System.getenv().getOrDefault("FLEET_API_URL", "http://localhost:8080");
+
+    private final HttpLog log;
+
+    public FleetApi(HttpLog log) {
+        this.log = log;
     }
 
-    private static RequestSpecification request() {
-        return given()
-                .baseUri(World.FLEET_API_URL)
-                .accept(ContentType.JSON)
-                .contentType(ContentType.JSON)
-                .log().ifValidationFails();
+    public Response register(String vin, String model, String swVersion) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("vin", vin);
+        body.put("model", model);
+        body.put("swVersion", swVersion);
+        return log.request(URL).body(Json.object(body)).post("/api/v1/vehicles");
     }
 
-    public static Response register(String vin, String model, String swVersion) {
-        return request()
-                .body(json("vin", vin, "model", model, "swVersion", swVersion))
-                .post("/api/v1/vehicles");
+    public Response get(String id) {
+        return log.request(URL).get("/api/v1/vehicles/{id}", id);
     }
 
-    public static Response get(String id) {
-        return request().get("/api/v1/vehicles/{id}", id);
+    public Response update(String id, String model, String swVersion) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("swVersion", swVersion);
+        return log.request(URL).body(Json.object(body)).put("/api/v1/vehicles/{id}", id);
     }
 
-    public static Response update(String id, String model, String swVersion) {
-        return request()
-                .body(json("model", model, "swVersion", swVersion))
-                .put("/api/v1/vehicles/{id}", id);
+    public Response delete(String id) {
+        return log.request(URL).delete("/api/v1/vehicles/{id}", id);
     }
 
-    public static Response delete(String id) {
-        return request().delete("/api/v1/vehicles/{id}", id);
-    }
-
-    /**
-     * A flat JSON object from name/value pairs. Written by hand so the request
-     * bodies do not depend on which JSON mapper REST Assured finds.
-     */
-    static String json(String... namesAndValues) {
-        StringBuilder body = new StringBuilder("{");
-        for (int i = 0; i < namesAndValues.length; i += 2) {
-            if (i > 0) {
-                body.append(',');
-            }
-            body.append('"').append(namesAndValues[i]).append("\":\"")
-                    .append(namesAndValues[i + 1].replace("\\", "\\\\").replace("\"", "\\\""))
-                    .append('"');
-        }
-        return body.append('}').toString();
-    }
-
-    public static Response list(String model, int page, int size) {
-        return request()
+    public Response list(String model, int page, int size) {
+        return log.request(URL)
                 .queryParam("model", model)
                 .queryParam("page", page)
                 .queryParam("size", size)
