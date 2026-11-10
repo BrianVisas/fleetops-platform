@@ -1,5 +1,5 @@
 *** Settings ***
-Documentation       Steps shared by rollouts.robot (#4) and updates.robot (#5).
+Documentation       Steps shared by rollouts.robot (#4), updates.robot (#5) and auto_pause.robot (#6).
 ...                 Vehicles are numbered from 1 in the order a test registered them.
 Resource            common_steps.resource
 
@@ -67,6 +67,16 @@ Vehicle ${number:\d+} has failed to install the update
     ${response}=    Report Update Result    ${VEHICLES}[${{ int($number) - 1 }}]    ${RELEASE}[version]    ${False}
     Response Status Should Be    202    ${response}
 
+Vehicles ${first:\d+} to ${last:\d+} have installed the update successfully
+    FOR    ${number}    IN RANGE    ${first}    ${{ int($last) + 1 }}
+        Vehicle ${number} has installed the update successfully
+    END
+
+Vehicles ${first:\d+} to ${last:\d+} have failed to install the update
+    FOR    ${number}    IN RANGE    ${first}    ${{ int($last) + 1 }}
+        Vehicle ${number} has failed to install the update
+    END
+
 I create a rollout of the release to ${percentage:\d+}%
     ${response}=    Create Rollout    ${RELEASE}[id]    ${percentage}
     IF    ${response.status_code} == 201
@@ -121,3 +131,8 @@ Vehicle ${number:\d+} is on the release version
 Vehicle ${number:\d+} is still on software version "${version}"
     ${response}=    Fetch Vehicle    ${VEHICLES}[${{ int($number) - 1 }}]
     Should Be Equal    ${response.json()}[swVersion]    ${version}
+
+The rollout's pause reason is ${reason}
+    ${response}=    Get Rollout    ${ROLLOUT_ID}
+    ${body}=    Set Variable    ${response.json()}
+    Should Be Equal    ${body.get("pauseReason")}    ${reason}    msg=${response.text}

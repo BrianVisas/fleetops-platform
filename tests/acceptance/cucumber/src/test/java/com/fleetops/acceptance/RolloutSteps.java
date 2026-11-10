@@ -11,7 +11,7 @@ import io.cucumber.java.en.When;
 import io.restassured.response.Response;
 
 /**
- * Steps shared by features/rollouts.feature (#4) and features/updates.feature (#5).
+ * Steps shared by features/rollouts.feature (#4), updates.feature (#5) and auto_pause.feature (#6).
  * Vehicles are numbered from 1 in the order the scenario registered them.
  */
 public class RolloutSteps {
@@ -110,6 +110,20 @@ public class RolloutSteps {
         api.reportResult(vehicle(number), releaseVersion(), false).then().statusCode(202);
     }
 
+    @Given("vehicles {int} to {int} have installed the update successfully")
+    public void vehiclesInstalled(int first, int last) {
+        for (int number = first; number <= last; number++) {
+            vehicleInstalled(number);
+        }
+    }
+
+    @Given("vehicles {int} to {int} have failed to install the update")
+    public void vehiclesFailed(int first, int last) {
+        for (int number = first; number <= last; number++) {
+            vehicleFailed(number);
+        }
+    }
+
     // ---- When ----
 
     @When("I create a rollout of the release to {int}%")
@@ -188,5 +202,10 @@ public class RolloutSteps {
     @Then("vehicle {int} is still on software version {string}")
     public void vehicleStillOn(int number, String swVersion) {
         assertThat(api.get(vehicle(number)).path("swVersion"), equalTo(swVersion));
+    }
+
+    @Then("the rollout's pause reason is {word}")
+    public void rolloutPauseReason(String reason) {
+        assertThat(rollout().path("pauseReason"), equalTo(reason));
     }
 }
