@@ -3,7 +3,7 @@ Documentation       Customer issue #1: register and manage vehicles.
 ...                 As a fleet operator I want to register, list, update and delete
 ...                 vehicles, so that the fleet in the system matches the fleet on
 ...                 the road. Same scenarios as features/vehicles.feature.
-Resource            fleet_api.resource
+Resource            common_steps.resource
 Suite Setup         Connect To Fleet Api
 Test Tags           issue-1
 
@@ -56,12 +56,6 @@ Listing vehicles of one model, page by page
 
 
 *** Keywords ***
-A registered vehicle
-    ${vin}=    Random VIN
-    ${response}=    Register Vehicle    ${vin}
-    Response Status Should Be    201    ${response}
-    VAR    &{VEHICLE}    id=${response.json()}[id]    vin=${vin}    model=ID.4    swVersion=1.0.0    scope=TEST
-
 ${first:\d+} registered vehicles of one model and ${second:\d+} of another
     ${first_model}=    Random Model
     ${other_model}=    Random Model
@@ -114,17 +108,11 @@ Operation on a missing vehicle returns 404
     END
     Response Status Should Be    404
 
-The response status is ${status:\d+}
-    Response Status Should Be    ${status}
-
 The response contains the new vehicle with an id
     ${body}=    Set Variable    ${RESPONSE.json()}
     Should Match Regexp    ${body}[id]    ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
     Should Be Equal    ${body}[vin]    ${VEHICLE}[vin]
     Should End With    ${RESPONSE.headers}[Location]    /api/v1/vehicles/${body}[id]
-
-The error message mentions "${text}"
-    Should Contain    ${RESPONSE.json()}[message]    ${text}
 
 The response shows the vehicle's VIN, model and software version
     ${body}=    Set Variable    ${RESPONSE.json()}

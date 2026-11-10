@@ -9,7 +9,7 @@ auto-pause) is built test-first. Release `v0.3.0`.
 | # | Branch | Delivers |
 |---|--------|----------|
 | 1 | `test/1-acceptance-bake-off` | `tests/acceptance` with the vehicle scenarios (#1) in Cucumber + REST Assured, pytest-bdd and Robot Framework; `acceptance.yml` runs all three against the Compose stack |
-| 2 | `test/2-acceptance-decision` | ADR-0006 picks one suite from the results; the other two are removed; scenarios for #2 (telemetry); a check that every open customer issue has a tagged scenario |
+| 2 | `test/2-acceptance-decision` | ADR-0006 keeps all three suites, held to the same scenarios; scenarios for #2 (telemetry); a check that every customer issue has a tagged scenario in every suite |
 | 3 | `test/3-release-and-rollout` | Scenarios for #3, #4 and #5 |
 | 4 | `feat/4-auto-pause` | #6 test-first: the acceptance scenario is written and fails, then the migration, service logic and unit tests make it pass |
 | 5 | `feat/5-web-ui` | Small dashboard (vehicle list, rollout status): static HTML and JS behind nginx, which proxies `/api` to fleet-api |
@@ -18,12 +18,14 @@ auto-pause) is built test-first. Release `v0.3.0`.
 
 ## Why the bake-offs
 
-Packages 1 and 6 each build the same small slice in three tools on purpose,
-compare them against criteria written down before the results (see
-`tests/acceptance/README.md`), and keep one. That is how a tool choice gets made
-in a team: a time-boxed spike, evidence, and an ADR, rather than whatever was
-installed first. Keeping all three would triple the maintenance for no extra
-coverage.
+Packages 1 and 6 each build the same small slice in three tools on purpose and
+compare them against criteria written down before the results. That is how a
+tool choice gets made in a team: a time-boxed spike, evidence, and an ADR,
+rather than whatever was installed first.
+
+For the acceptance tests, ADR-0006 keeps all three as a deliberate learning
+investment, with a parity check so they stay one specification. A product team
+would keep one; the ADR says which, and when to revisit.
 
 ## Where the tests sit
 

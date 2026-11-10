@@ -22,16 +22,18 @@ public class VehicleSteps {
             "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
     private final World world;
+    private final FleetApi api;
 
-    public VehicleSteps(World world) {
+    public VehicleSteps(World world, FleetApi api) {
         this.world = world;
+        this.api = api;
     }
 
     private Response register(String vin, String model, String swVersion) {
         world.vehicle.put("vin", vin);
         world.vehicle.put("model", model);
         world.vehicle.put("swVersion", swVersion);
-        world.response = FleetApi.register(vin, model, swVersion);
+        world.response = api.register(vin, model, swVersion);
         return world.response;
     }
 
@@ -49,10 +51,10 @@ public class VehicleSteps {
         world.firstModel = World.randomModel();
         String otherModel = World.randomModel();
         for (int i = 0; i < first; i++) {
-            FleetApi.register(World.randomVin(), world.firstModel, "1.0.0").then().statusCode(201);
+            api.register(World.randomVin(), world.firstModel, "1.0.0").then().statusCode(201);
         }
         for (int i = 0; i < second; i++) {
-            FleetApi.register(World.randomVin(), otherModel, "1.0.0").then().statusCode(201);
+            api.register(World.randomVin(), otherModel, "1.0.0").then().statusCode(201);
         }
     }
 
@@ -65,7 +67,7 @@ public class VehicleSteps {
 
     @When("I register another vehicle with the same VIN")
     public void registerSameVin() {
-        world.response = FleetApi.register(world.vehicle.get("vin"), "ID.3", "1.0.0");
+        world.response = api.register(world.vehicle.get("vin"), "ID.3", "1.0.0");
     }
 
     @When("I register a vehicle with the VIN {string}")
@@ -75,26 +77,26 @@ public class VehicleSteps {
 
     @When("I fetch that vehicle")
     public void fetchVehicle() {
-        world.response = FleetApi.get(world.vehicle.get("id"));
+        world.response = api.get(world.vehicle.get("id"));
     }
 
     @When("I update its software version to {string}")
     public void updateVehicle(String swVersion) {
-        world.response = FleetApi.update(world.vehicle.get("id"), world.vehicle.get("model"), swVersion);
+        world.response = api.update(world.vehicle.get("id"), world.vehicle.get("model"), swVersion);
     }
 
     @When("I delete that vehicle")
     public void deleteVehicle() {
-        world.response = FleetApi.delete(world.vehicle.get("id"));
+        world.response = api.delete(world.vehicle.get("id"));
     }
 
     @When("I {word} a vehicle that does not exist")
     public void operateOnMissingVehicle(String operation) {
         String missing = UUID.randomUUID().toString();
         world.response = switch (operation) {
-            case "fetch" -> FleetApi.get(missing);
-            case "update" -> FleetApi.update(missing, "ID.4", "1.0.0");
-            case "delete" -> FleetApi.delete(missing);
+            case "fetch" -> api.get(missing);
+            case "update" -> api.update(missing, "ID.4", "1.0.0");
+            case "delete" -> api.delete(missing);
             default -> throw new IllegalArgumentException("unknown operation: " + operation);
         };
     }
@@ -133,19 +135,19 @@ public class VehicleSteps {
 
     @Then("fetching the vehicle shows software version {string}")
     public void fetchedVersion(String swVersion) {
-        Response response = FleetApi.get(world.vehicle.get("id"));
+        Response response = api.get(world.vehicle.get("id"));
         response.then().statusCode(200);
         assertThat(response.path("swVersion"), equalTo(swVersion));
     }
 
     @Then("fetching the vehicle returns status {int}")
     public void fetchedStatus(int status) {
-        FleetApi.get(world.vehicle.get("id")).then().statusCode(status);
+        api.get(world.vehicle.get("id")).then().statusCode(status);
     }
 
     @Then("page {int} holds {int} vehicle(s), all of the first model")
     public void pageHolds(int page, int count) {
-        Response response = FleetApi.list(world.firstModel, page - 1, world.pageSize);
+        Response response = api.list(world.firstModel, page - 1, world.pageSize);
         response.then().statusCode(200);
         List<String> models = response.jsonPath().getList("content.model", String.class);
         assertThat(models, hasSize(count));

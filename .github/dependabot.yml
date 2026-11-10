@@ -54,6 +54,35 @@ updates:
     cooldown:
       default-days: 14
 
+  # Acceptance tests (ADR-0006). Minor and patch updates arrive as one pull
+  # request per language; a major version gets its own. The Cucumber suite has
+  # its own copy of the Maven wrapper, updated here like fleet-api's.
+  - package-ecosystem: maven
+    directory: /tests/acceptance/cucumber
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      acceptance-java:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: pip
+    directories:
+      - /tests/acceptance/pytest-bdd
+      - /tests/acceptance/robot
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      acceptance-python:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   # Third-party actions are pinned to commit SHAs with the version in a comment;
   # Dependabot updates both. See EL-016.
   - package-ecosystem: github-actions
