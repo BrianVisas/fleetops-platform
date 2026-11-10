@@ -134,6 +134,9 @@ same cadence, because nothing makes them fail loudly:
   scans with, and therefore what govulncheck checks the standard library against)
 - the Alpine release in both runtime stages (`docker run --rm alpine:latest cat /etc/alpine-release` shows the current series)
 - the Spring Boot parent version (decides the Tomcat and Jackson versions)
+- the runner image (`ubuntu-24.04` in every workflow). GitHub moves `ubuntu-latest`
+  to a new release on its own schedule, and Dependabot does not update runner
+  labels, so this one is reviewed by hand
 
 Dependabot covers the image tags as `docker` updates, the toolchain line as
 `gomod` updates, and the Spring Boot parent as a `maven` update. The reason to review by hand anyway is that Dependabot proposes a
