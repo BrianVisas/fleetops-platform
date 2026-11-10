@@ -78,11 +78,10 @@ updates:
     cooldown:
       default-days: 14
     ignore:
-      # JDK majors are an ADR decision (see the header).
+      # JDK majors are an ADR decision (see the header). One rule covers both
+      # fleet-api stages, the 21-jdk builder and the 21-jre runtime, so a new
+      # JDK cannot arrive in one stage only. There is no maven image any more:
+      # the builder runs the wrapper, which the maven ecosystem above updates
+      # (maven-build group). See EL-019.
       - dependency-name: "eclipse-temurin"
         update-types: ["version-update:semver-major"]
-      # The builder tag 3.9-eclipse-temurin-21 floats: it already picks up every
-      # Maven 3.9.x and JDK 21 patch. Any other tag Dependabot proposes would
-      # change the Maven minor or the JDK, and both are deliberate changes. It
-      # proposed ...-temurin-26 (not an LTS release) the first time it ran.
-      - dependency-name: "maven"
