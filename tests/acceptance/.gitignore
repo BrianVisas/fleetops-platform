@@ -1,0 +1,5 @@
+# Test output and local environments; CI uploads reports/ as an artifact.
+reports/
+.venv/
+__pycache__/
+cucumber/target/
