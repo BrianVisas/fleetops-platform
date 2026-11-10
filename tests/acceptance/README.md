@@ -49,9 +49,15 @@ python3 tests/acceptance/check_traceability.py --issues /tmp/issues.json
 1. Write it in Gherkin, in the feature file for its issue, under that issue's
    `@issue-N` tag.
 2. Add any new steps to the Cucumber step classes and to the pytest-bdd test
-   module for that feature. Steps used by several features live in
-   `VehicleSteps` (Cucumber, shared through `World`) and `conftest.py`
-   (pytest-bdd).
+   module for that feature. Steps used by several features live in one place
+   per suite:
+
+   | Suite | Shared steps |
+   |-------|--------------|
+   | Cucumber | `VehicleSteps`, `RolloutSteps` (state shared through `World`) |
+   | pytest-bdd | `conftest.py`, `rollout_steps.py` |
+   | Robot | `common_steps.resource`, `rollout_steps.resource` |
+
 3. Add a Robot test with exactly the same name to the matching `.robot` file.
 4. If the issue was in `coverage-exceptions.txt`, remove it.
 

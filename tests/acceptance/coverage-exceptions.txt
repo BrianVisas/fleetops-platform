@@ -3,8 +3,5 @@
 # and when a listed issue becomes covered. This list only ever shrinks.
 #
 # issue  reason
-3  scenarios come in Phase 3 package 3
-4  scenarios come in Phase 3 package 3
-5  scenarios come in Phase 3 package 3
 6  built test-first in Phase 3 package 4
 7  a load requirement, proved by the k6 tests in Phase 5
