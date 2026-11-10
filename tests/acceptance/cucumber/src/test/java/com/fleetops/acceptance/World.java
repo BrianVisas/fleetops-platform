@@ -2,7 +2,9 @@ package com.fleetops.acceptance;
 
 import io.restassured.response.Response;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,6 +23,24 @@ public class World {
     public String firstModel;
     public int pageSize;
     public String unknownVehicleId;
+
+    // Releases and rollouts
+    public String model;
+    public final List<String> vehicles = new ArrayList<>();
+    public final Map<String, Object> release = new HashMap<>();
+    public final Map<String, Object> secondRelease = new HashMap<>();
+    public String requestedModel;
+    public String rolloutId;
+
+    /** Release versions are unique across the whole system, so every scenario publishes its own. */
+    public static String randomVersion() {
+        return "9." + random("0123456789", 9);
+    }
+
+    /** A random hex string, the shape of a SHA-256 checksum. */
+    public static String randomChecksum() {
+        return random("0123456789abcdef", 64);
+    }
 
     public static String randomVin() {
         return random(VIN_CHARS, 17);

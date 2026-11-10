@@ -9,6 +9,9 @@ import pytest
 import requests
 from pytest_bdd import given, parsers, then
 
+# Steps shared by the rollout and update features live in their own module.
+pytest_plugins = ["rollout_steps"]
+
 FLEET_API_URL = os.environ.get("FLEET_API_URL", "http://localhost:8080").rstrip("/")
 TELEMETRY_URL = os.environ.get("TELEMETRY_URL", "http://localhost:8081").rstrip("/")
 
@@ -18,6 +21,12 @@ VIN_CHARS = "".join(c for c in string.ascii_uppercase + string.digits if c not i
 
 def random_vin():
     return "".join(random.choices(VIN_CHARS, k=17))
+
+
+def random_version():
+    # Release versions are unique across the whole system, so every scenario
+    # publishes its own.
+    return "9." + "".join(random.choices(string.digits, k=9))
 
 
 def random_model():
@@ -50,6 +59,35 @@ class FleetApi:
     def list(self, model, page, size):
         return self.http.get(f"{FLEET_API_URL}/api/v1/vehicles", timeout=10,
                              params={"model": model, "page": page, "size": size})
+
+    def publish_release(self, version, target_model, checksum, size_bytes):
+        return self.http.post(f"{FLEET_API_URL}/api/v1/releases", timeout=10,
+                              json={"version": version, "targetModel": target_model,
+                                    "checksum": checksum, "sizeBytes": size_bytes})
+
+    def list_releases(self):
+        return self.http.get(f"{FLEET_API_URL}/api/v1/releases", timeout=10)
+
+    def create_rollout(self, release_id, percentage):
+        return self.http.post(f"{FLEET_API_URL}/api/v1/rollouts", timeout=10,
+                              json={"releaseId": release_id, "percentage": percentage})
+
+    def get_rollout(self, rollout_id):
+        return self.http.get(f"{FLEET_API_URL}/api/v1/rollouts/{rollout_id}", timeout=10)
+
+    def change_percentage(self, rollout_id, percentage):
+        return self.http.post(f"{FLEET_API_URL}/api/v1/rollouts/{rollout_id}/percentage", timeout=10,
+                              json={"percentage": percentage})
+
+    def pause(self, rollout_id):
+        return self.http.post(f"{FLEET_API_URL}/api/v1/rollouts/{rollout_id}/pause", timeout=10)
+
+    def claim_update(self, vehicle_id):
+        return self.http.get(f"{FLEET_API_URL}/api/v1/vehicles/{vehicle_id}/update", timeout=10)
+
+    def report_result(self, vehicle_id, version, success):
+        return self.http.post(f"{FLEET_API_URL}/api/v1/vehicles/{vehicle_id}/update/result", timeout=10,
+                              json={"version": version, "success": success})
 
 
 class TelemetryApi:

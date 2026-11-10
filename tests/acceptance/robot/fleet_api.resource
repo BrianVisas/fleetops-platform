@@ -87,3 +87,61 @@ Latest Reading
     [Arguments]    ${vehicle_id}
     ${response}=    GET On Session    telemetry    /vehicles/${vehicle_id}/latest    expected_status=any
     RETURN    ${response}
+
+Random Version
+    # Release versions are unique across the whole system, so every test
+    # publishes its own.
+    ${digits}=    Generate Random String    9    [NUMBERS]
+    RETURN    9.${digits}
+
+Publish Release
+    [Arguments]    ${version}    ${target_model}    ${size_bytes}=${1024}
+    ${checksum}=    Evaluate    secrets.token_hex(32)    modules=secrets
+    ${body}=    Create Dictionary    version=${version}    targetModel=${target_model}
+    ...    checksum=${checksum}    sizeBytes=${size_bytes}
+    ${response}=    POST On Session    fleet    /api/v1/releases    json=${body}    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}
+
+List Releases
+    ${response}=    GET On Session    fleet    /api/v1/releases    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}
+
+Create Rollout
+    [Arguments]    ${release_id}    ${percentage}
+    ${body}=    Create Dictionary    releaseId=${release_id}    percentage=${{ int($percentage) }}
+    ${response}=    POST On Session    fleet    /api/v1/rollouts    json=${body}    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}
+
+Get Rollout
+    [Arguments]    ${rollout_id}
+    ${response}=    GET On Session    fleet    /api/v1/rollouts/${rollout_id}    expected_status=any
+    RETURN    ${response}
+
+Change Rollout Percentage
+    [Arguments]    ${rollout_id}    ${percentage}
+    ${body}=    Create Dictionary    percentage=${{ int($percentage) }}
+    ${response}=    POST On Session    fleet    /api/v1/rollouts/${rollout_id}/percentage    json=${body}    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}
+
+Pause Rollout
+    [Arguments]    ${rollout_id}
+    ${response}=    POST On Session    fleet    /api/v1/rollouts/${rollout_id}/pause    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}
+
+Claim Update
+    [Arguments]    ${vehicle_id}
+    ${response}=    GET On Session    fleet    /api/v1/vehicles/${vehicle_id}/update    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}
+
+Report Update Result
+    [Arguments]    ${vehicle_id}    ${version}    ${success}
+    ${body}=    Create Dictionary    version=${version}    success=${success}
+    ${response}=    POST On Session    fleet    /api/v1/vehicles/${vehicle_id}/update/result    json=${body}    expected_status=any
+    VAR    ${RESPONSE}    ${response}    scope=TEST
+    RETURN    ${response}

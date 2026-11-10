@@ -20,7 +20,7 @@ final class Json {
             }
             body.append(quote(field.getKey())).append(':');
             Object value = field.getValue();
-            body.append(value instanceof Number ? value.toString() : quote(String.valueOf(value)));
+            body.append(value instanceof Number || value instanceof Boolean ? value.toString() : quote(String.valueOf(value)));
         }
         return body.append('}').toString();
     }
