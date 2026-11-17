@@ -6,7 +6,7 @@ COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 help:
 	@echo "make build   - build every service image"
 	@echo "make test    - run all unit tests (no database needed)"
-	@echo "make up      - start db, fleet-api and telemetry-ingest"
+	@echo "make up      - start db, fleet-api, telemetry-ingest and web-ui"
 	@echo "make sim     - add the vehicle simulator to a running stack"
 	@echo "make logs    - follow logs of the running stack"
 	@echo "make ps      - show container status"
@@ -23,10 +23,11 @@ test:
 	cd services/vehicle-sim && go test ./...
 
 up:
-	$(COMPOSE) up -d --build
+	$(COMPOSE) up -d --build --wait
 	@echo
 	@echo "fleet-api        http://localhost:8080/actuator/health"
 	@echo "telemetry-ingest http://localhost:8081/healthz"
+	@echo "web-ui           http://localhost:3000"
 
 sim:
 	$(COMPOSE) --profile sim up -d --build vehicle-sim

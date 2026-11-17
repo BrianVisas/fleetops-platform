@@ -41,7 +41,7 @@ done
 
 echo
 echo "=== images (trivy image) ==="
-for service in fleet-api telemetry-ingest vehicle-sim; do
+for service in fleet-api telemetry-ingest vehicle-sim web-ui; do
   echo "--- $service"
   docker build --pull -q -t "fleetops/$service:scan" "services/$service" > /dev/null || { failures=$((failures + 1)); continue; }
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \

@@ -4,3 +4,4 @@
 #
 # issue  reason
 7  a load requirement, proved by the k6 tests in Phase 5
+40  the dashboard, proved by the Playwright tests in Phase 3 package 6
