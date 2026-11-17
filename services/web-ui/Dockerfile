@@ -20,7 +20,7 @@ EXPOSE 8080
 
 # wget comes from busybox, so the health check costs nothing extra.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-  CMD wget -qO- http://localhost:8080/healthz | grep -q UP
+  CMD wget -qO- http://127.0.0.1:8080/healthz | grep -q UP
 
 # -e: log startup errors to stderr instead of the packaged log path, which a
 # non-root user cannot open.

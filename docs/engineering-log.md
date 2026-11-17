@@ -36,6 +36,7 @@ Every entry follows the same structure:
 | [EL-018](#el-018-ten-dependency-prs-in-24-seconds) | Ten dependency PRs in 24 seconds | dependencies | fixed |
 | [EL-019](#el-019-ci-and-the-image-built-with-different-maven-versions) | CI and the image built with different Maven versions | build | fixed |
 | [EL-020](#el-020-a-file-nobody-had-touched-showed-as-modified) | A file nobody had touched showed as modified | build | fixed |
+| [EL-021](#el-021-a-health-check-that-could-never-pass) | A health check that could never pass | build | fixed |
 
 ---
 
@@ -692,3 +693,35 @@ writes to the repository, including bots that commit through an API and never
 run git's filters. When a file shows as changed and nobody touched it,
 `git ls-files --eol` and `git diff --ignore-cr-at-eol` tell you in seconds
 whether only the line endings differ.
+
+---
+
+## EL-021: A health check that could never pass
+
+2026-11-17 · build · fixed in #41
+
+**Symptom.** All three acceptance jobs on #41 failed while starting the stack:
+`docker compose up --wait` never saw web-ui become healthy. Locally the
+container started and served the dashboard, so nothing looked wrong until
+`docker inspect` showed every health check failing with
+`wget: can't connect to remote host: Connection refused`.
+
+**Root cause.** The health check called `http://localhost:8080/healthz`. In
+Alpine, `localhost` resolves to the IPv6 address `::1` first, and busybox
+`wget` does not fall back to `127.0.0.1`. nginx was configured with
+`listen 8080;`, which binds IPv4 only. So the check was refused every time,
+while every real client, all of them on IPv4, got the dashboard. The Go
+services never showed this because their servers listen on IPv4 and IPv6.
+
+**Fix.** The health check calls `127.0.0.1`, the address nginx listens on.
+`make up` now waits for every health check the way CI does
+(`up --wait`), so a container that never turns healthy fails locally too.
+
+**Verification.** Inside the running container, `wget` to `localhost` was
+refused while `127.0.0.1` returned `UP`. After the change, `make up` waits
+until web-ui is healthy, and the acceptance jobs pass in CI.
+
+**Lesson.** A container that starts and serves traffic can still fail its
+health check, and nothing shows it unless something waits for health. Wait
+locally the way CI waits, and point a health check at the address the server
+actually binds rather than at a name.

@@ -23,7 +23,7 @@ test:
 	cd services/vehicle-sim && go test ./...
 
 up:
-	$(COMPOSE) up -d --build
+	$(COMPOSE) up -d --build --wait
 	@echo
 	@echo "fleet-api        http://localhost:8080/actuator/health"
 	@echo "telemetry-ingest http://localhost:8081/healthz"
