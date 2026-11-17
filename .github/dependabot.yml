@@ -101,6 +101,7 @@ updates:
       - /services/fleet-api
       - /services/telemetry-ingest
       - /services/vehicle-sim
+      - /services/web-ui
     schedule:
       interval: weekly
       day: monday

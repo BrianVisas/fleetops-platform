@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FleetOps</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>FleetOps</h1>
+    <nav aria-label="Main">
+      <a href="#/vehicles">Vehicles</a>
+      <a href="#/releases">Releases</a>
+    </nav>
+  </header>
+
+  <main>
+    <p id="error" role="alert" hidden></p>
+
+    <section id="vehicles-view" aria-labelledby="vehicles-heading" hidden>
+      <h2 id="vehicles-heading">Vehicles</h2>
+      <form id="vehicle-filter">
+        <label for="model-filter">Model</label>
+        <input id="model-filter" name="model" placeholder="all models">
+        <button type="submit">Show</button>
+      </form>
+      <table>
+        <thead>
+          <tr><th>VIN</th><th>Model</th><th>Software version</th><th>Registered</th></tr>
+        </thead>
+        <tbody id="vehicle-rows"></tbody>
+      </table>
+      <div class="pager">
+        <button type="button" id="previous-page">Previous</button>
+        <span id="page-info"></span>
+        <button type="button" id="next-page">Next</button>
+      </div>
+    </section>
+
+    <section id="releases-view" aria-labelledby="releases-heading" hidden>
+      <h2 id="releases-heading">Releases</h2>
+      <table>
+        <thead>
+          <tr><th>Version</th><th>Model</th><th>Size</th><th>Published</th></tr>
+        </thead>
+        <tbody id="release-rows"></tbody>
+      </table>
+
+      <h3 id="start-heading">Start a rollout</h3>
+      <form id="start-rollout" aria-labelledby="start-heading">
+        <label for="rollout-release">Release</label>
+        <select id="rollout-release" name="releaseId" required></select>
+        <label for="rollout-percentage">Percentage</label>
+        <input id="rollout-percentage" name="percentage" type="number" min="1" max="100" value="10" required>
+        <button type="submit">Start rollout</button>
+      </form>
+    </section>
+
+    <section id="rollout-view" aria-labelledby="rollout-heading" hidden>
+      <h2 id="rollout-heading">Rollout</h2>
+      <dl>
+        <dt>Status</dt><dd id="rollout-status"></dd>
+        <dt>Pause reason</dt><dd id="rollout-pause-reason"></dd>
+        <dt>Percentage</dt><dd id="rollout-percentage-value"></dd>
+        <dt>Pending</dt><dd id="count-pending"></dd>
+        <dt>Installing</dt><dd id="count-installing"></dd>
+        <dt>Succeeded</dt><dd id="count-succeeded"></dd>
+        <dt>Failed</dt><dd id="count-failed"></dd>
+      </dl>
+      <div class="actions">
+        <button type="button" id="pause-rollout">Pause</button>
+        <button type="button" id="resume-rollout">Resume</button>
+        <form id="raise-rollout">
+          <label for="raise-percentage">New percentage</label>
+          <input id="raise-percentage" name="percentage" type="number" min="1" max="100" required>
+          <button type="submit">Raise</button>
+        </form>
+      </div>
+      <p class="hint">Refreshes every 5 seconds.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

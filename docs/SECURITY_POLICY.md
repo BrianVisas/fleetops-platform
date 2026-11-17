@@ -10,8 +10,8 @@ thresholds are a decision rather than whatever was convenient when a scan went r
 | Secrets | gitleaks | full git history and working tree | any finding |
 | IaC and config | Trivy `fs` (`misconfig,secret`, `--offline-scan`) | Dockerfiles, compose, Terraform, Kubernetes manifests | HIGH, CRITICAL |
 | Go vulnerabilities | govulncheck | both Go modules, on the pinned toolchain | any reachable vulnerability |
-| Container images | Trivy `image` | all three images | HIGH, CRITICAL with a fix, minus `.trivyignore.yaml`; an end-of-life OS fails the scan |
-| SBOM | Trivy (CycloneDX, per image) | the three shipped images | never - it is an artifact |
+| Container images | Trivy `image` | all four images | HIGH, CRITICAL with a fix, minus `.trivyignore.yaml`; an end-of-life OS fails the scan |
+| SBOM | Trivy (CycloneDX, per image) | the four shipped images | never - it is an artifact |
 
 All of them also run on a nightly schedule, because a clean scan last week says
 nothing about today: the databases change daily, not the code.
