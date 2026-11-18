@@ -83,10 +83,11 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
-  # Browser tests (tests/e2e), the same way: one pull request per language for
-  # minor and patch updates. Playwright ships its own browsers per version, so a
-  # Playwright bump is also a browser update, and CI proves it in all three.
-  # The Java suite has its own copy of the Maven wrapper, like the Cucumber suite.
+  # Browser tests (tests/e2e, ADR-0007), the same way: one pull request per
+  # language for minor and patch updates. Playwright ships its own browsers per
+  # version, so a Playwright bump is also a browser update, and CI proves it in
+  # all three browsers. The Java suite has its own copy of the Maven wrapper,
+  # like the Cucumber suite.
   - package-ecosystem: npm
     directory: /tests/e2e/playwright-ts
     schedule:
@@ -98,6 +99,12 @@ updates:
       e2e-typescript:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # The Node.js types follow the Node.js major that runs the suite
+      # (node-version in e2e.yml, 24 LTS); a newer major describes APIs that
+      # runtime does not have. Both move together, by hand (#44).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: maven
     directory: /tests/e2e/playwright-java
@@ -108,18 +115,6 @@ updates:
       default-days: 14
     groups:
       e2e-java:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  - package-ecosystem: pip
-    directory: /tests/e2e/playwright-python
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 14
-    groups:
-      e2e-python:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 

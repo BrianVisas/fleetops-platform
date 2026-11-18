@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Issue #40: see the fleet and steer rollouts in a browser. One test per
- * acceptance criterion, with the same names in the TypeScript and Python suites.
+ * acceptance criterion, with the same names in the TypeScript suite.
  */
 @Tag("issue-40")
 class DashboardTest extends BrowserTest {
