@@ -49,10 +49,10 @@ change once the repository is public.
 
 ## Done when
 
-- [ ] Every customer issue links to at least one automated acceptance test
+- [x] Every customer issue links to at least one automated test, or to a recorded exception (#7 is a Phase 5 load requirement)
 - [x] An open customer issue without a tagged scenario fails CI
 - [x] #6 is implemented, and its scenario failed before the implementation existed
 - [x] Playwright tests run headless in CI, with traces and screenshots on failure
 - [x] ADR-0006 and ADR-0007 record the tool decisions
-- [ ] `docs/TEST_STRATEGY.md` is written
+- [x] `docs/TEST_STRATEGY.md` is written
 - [ ] Tag `v0.3.0` via release-please
