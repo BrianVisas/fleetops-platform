@@ -1,0 +1,16 @@
+# The FleetOps environments on the local cluster. Argo CD takes these over in
+# Phase 4 package 4; until then install-fleetops.sh applies them.
+#
+# - fleetops.io/gateway: the Gateway (gateway.yaml) accepts routes only from
+#   namespaces with this label.
+# - pod-security: the "restricted" profile rejects any pod that runs as root,
+#   can escalate privileges, or keeps Linux capabilities. The images already
+#   run as uid 10001; this makes the cluster enforce it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleetops-dev
+  labels:
+    fleetops.io/gateway: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted

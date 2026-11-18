@@ -1,19 +1,22 @@
 name: cluster
 
-# Creates the local kind cluster on a runner with the same script, versions and
-# manifests as on the Mac (infra/local), and checks that a request reaches
-# Envoy through the port mapping. Later Phase 4 packages install the charts and
-# run the acceptance suites against this cluster.
+# Creates the local kind cluster on a runner with the same scripts, versions,
+# charts and manifests as on the Mac (infra/local, deploy/charts), checks that
+# a request reaches Envoy through the port mapping, and installs FleetOps into
+# it. Later Phase 4 packages add the services and run the acceptance suites
+# against this cluster.
 
 on:
   pull_request:
     paths:
       - "infra/local/**"
+      - "deploy/charts/**"
       - ".github/workflows/cluster.yml"
   push:
     branches: [main]
     paths:
       - "infra/local/**"
+      - "deploy/charts/**"
       - ".github/workflows/cluster.yml"
   workflow_dispatch:
 
@@ -48,9 +51,16 @@ jobs:
           helm version --short
           kubectl version --client
 
+      - name: Lint the charts
+        run: helm lint deploy/charts/*/
+
       - name: Create the cluster
         timeout-minutes: 10
         run: infra/local/cluster-up.sh
+
+      - name: Install FleetOps
+        timeout-minutes: 10
+        run: infra/local/install-fleetops.sh
 
       # What the cluster costs, for the laptop budget in docs/PHASE4.md.
       - name: Resource use
@@ -65,6 +75,9 @@ jobs:
           kubectl get gatewayclass,gateway,envoyproxy,svc -A || true
           kubectl describe gateway fleetops -n envoy-gateway-system || true
           kubectl logs -n envoy-gateway-system deployment/envoy-gateway --tail=100 || true
+          kubectl get events -n fleetops-dev --sort-by=.lastTimestamp || true
+          kubectl describe cluster.postgresql.cnpg.io fleetops-db -n fleetops-dev || true
+          kubectl logs -n cnpg-system deployment/cnpg-controller-manager --tail=100 || true
 
       - name: Delete the cluster
         if: always()
