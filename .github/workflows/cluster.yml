@@ -1,0 +1,71 @@
+name: cluster
+
+# Creates the local kind cluster on a runner with the same script, versions and
+# manifests as on the Mac (infra/local), and checks that a request reaches
+# Envoy through the port mapping. Later Phase 4 packages install the charts and
+# run the acceptance suites against this cluster.
+
+on:
+  pull_request:
+    paths:
+      - "infra/local/**"
+      - ".github/workflows/cluster.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/local/**"
+      - ".github/workflows/cluster.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cluster-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  kind:
+    name: kind cluster
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned versions with the checksums the projects publish, from
+      # infra/local/versions.env. kubectl comes with the runner image.
+      - name: Install kind and Helm
+        run: |
+          . infra/local/versions.env
+          curl -sSfLo /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_LINUX_AMD64_SHA256}  /tmp/kind" | sha256sum -c -
+          sudo install /tmp/kind /usr/local/bin/kind
+          curl -sSfLo /tmp/helm.tar.gz "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          echo "${HELM_LINUX_AMD64_SHA256}  /tmp/helm.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/helm.tar.gz -C /tmp
+          sudo install /tmp/linux-amd64/helm /usr/local/bin/helm
+          kind version
+          helm version --short
+          kubectl version --client
+
+      - name: Create the cluster
+        timeout-minutes: 10
+        run: infra/local/cluster-up.sh
+
+      # What the cluster costs, for the laptop budget in docs/PHASE4.md.
+      - name: Resource use
+        if: always()
+        run: |
+          kubectl get pods -A -o wide || true
+          docker stats --no-stream
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get gatewayclass,gateway,envoyproxy,svc -A || true
+          kubectl describe gateway fleetops -n envoy-gateway-system || true
+          kubectl logs -n envoy-gateway-system deployment/envoy-gateway --tail=100 || true
+
+      - name: Delete the cluster
+        if: always()
+        run: infra/local/cluster-down.sh

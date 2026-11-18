@@ -1,7 +1,7 @@
 # One entry point for the whole repo.
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help build test up down logs sim ps clean fmt
+.PHONY: help build test up down logs sim ps clean fmt cluster-up cluster-down cluster-status
 
 help:
 	@echo "make build   - build every service image"
@@ -13,6 +13,10 @@ help:
 	@echo "make down    - stop the stack (keeps the database volume)"
 	@echo "make clean   - stop the stack and delete the database volume"
 	@echo "make fmt     - format Go code"
+	@echo
+	@echo "make cluster-up     - create the local kind cluster with Envoy Gateway (infra/local)"
+	@echo "make cluster-status - show nodes, pods and the gateway"
+	@echo "make cluster-down   - delete the local kind cluster"
 
 build:
 	$(COMPOSE) build
@@ -48,3 +52,16 @@ clean:
 fmt:
 	cd services/telemetry-ingest && gofmt -w *.go
 	cd services/vehicle-sim && gofmt -w *.go
+
+# Local Kubernetes (Phase 4). The Compose stack and the cluster each need a few
+# GiB; stop one (make down) before starting the other on an 8 GiB Mac.
+cluster-up:
+	infra/local/cluster-up.sh
+
+cluster-status:
+	kubectl get nodes
+	kubectl get pods -A
+	kubectl get gateway -A
+
+cluster-down:
+	infra/local/cluster-down.sh
