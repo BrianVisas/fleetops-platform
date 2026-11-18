@@ -39,8 +39,10 @@ echo "== the FleetOps gateway"
 kubectl apply -f gateway.yaml
 kubectl wait gateway/fleetops -n envoy-gateway-system --for=condition=Accepted --timeout=120s
 # Envoy Gateway creates the Envoy deployment for the gateway a moment later.
-retry 120 kubectl get pods -n envoy-gateway-system \
-  -l gateway.envoyproxy.io/owning-gateway-name=fleetops -o name --no-headers
+# `kubectl get` exits 0 when nothing matches, so wait for output, not for the
+# exit code (EL-024).
+retry 120 sh -c 'kubectl get pods -n envoy-gateway-system \
+  -l gateway.envoyproxy.io/owning-gateway-name=fleetops -o name | grep -q .'
 kubectl wait pods -n envoy-gateway-system \
   -l gateway.envoyproxy.io/owning-gateway-name=fleetops \
   --for=condition=Ready --timeout=180s

@@ -39,6 +39,7 @@ Every entry follows the same structure:
 | [EL-021](#el-021-a-health-check-that-could-never-pass) | A health check that could never pass | build | fixed |
 | [EL-022](#el-022-two-pull-requests-each-red-because-of-the-other) | Two pull requests, each red because of the other | CI | fixed |
 | [EL-023](#el-023-twenty-minutes-of-fonts-and-codecs) | Twenty minutes of fonts and codecs | CI | fixed |
+| [EL-024](#el-024-a-wait-that-never-waited) | A wait that never waited | build | fixed |
 
 ---
 
@@ -813,3 +814,38 @@ not have. And a CI step that installs from a public mirror on every run is
 only as fast as that mirror today. Bake the dependencies into an image that
 is pulled from a registry built for it, and pin that image to the version
 the tests need.
+
+---
+
+## EL-024: A wait that never waited
+
+2026-11-18 · build · fixed in #54
+
+**Symptom.** `infra/local/cluster-up.sh` failed on a fresh cluster, both in CI
+and on the Mac, with `error: no matching resources found`, a second after the
+Gateway was accepted. Run again on the same cluster, the script passed, and the
+request through `127.0.0.1:8000` reached Envoy.
+
+**Root cause.** Envoy Gateway creates the Envoy pods for a Gateway a moment
+after accepting it. The script was meant to wait for them with
+`retry 120 kubectl get pods -l gateway.envoyproxy.io/owning-gateway-name=fleetops`,
+then `kubectl wait` for them to be ready. But `kubectl get` exits 0 when no
+resource matches: it prints `No resources found` and reports success. So
+`retry` returned at once, and `kubectl wait`, which does fail when nothing
+matches, ran before the pods existed. On the second run they had been there for
+minutes, which is why it passed.
+
+**Fix.** The retry now waits for output instead of an exit code:
+`kubectl get pods ... -o name | grep -q .` succeeds only once at least one pod
+is listed.
+
+**Verification.** A stand-in `kubectl` that prints nothing for its first two
+calls and a pod name on the third: the new check retried until the third call,
+10 seconds in. In CI, `cluster.yml` creates a fresh cluster on every run, which
+is the case that failed, and passes.
+
+**Lesson.** Know what a command's exit code means before building a wait on it.
+"Found nothing" and "failed" are different answers, and `kubectl get` treats
+the first as success. A wait that is never exercised in its waiting state, like
+one that only ever ran on a cluster that was already up, looks fine until the
+first fresh start.
