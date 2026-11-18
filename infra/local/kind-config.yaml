@@ -1,0 +1,19 @@
+# The local Kubernetes cluster (Phase 4). The node image is pinned in
+# versions.env and passed by cluster-up.sh.
+#
+# One node only: the Mac has 8 GiB of memory in total, and every kind node is a
+# container with its own kubelet, containerd and system pods. Workers would cost
+# memory and add nothing a single-machine cluster can show.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: fleetops
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Envoy's NodePort (gateway.yaml) on the Mac's localhost:8000. Colima
+      # forwards it from its VM. Bound to 127.0.0.1, so not reachable from the
+      # network the Mac is on.
+      - containerPort: 30080
+        hostPort: 8000
+        listenAddress: "127.0.0.1"
+        protocol: TCP
