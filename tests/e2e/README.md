@@ -76,6 +76,19 @@ BROWSERS=firefox tests/e2e/playwright-java/run.sh -Dtest='DashboardTest#apiError
 `WEB_UI_URL` points the suites at another dashboard (default
 `http://localhost:3000`).
 
+On a bare Linux machine, the browsers need system libraries first, once:
+`npx playwright install-deps` in `playwright-ts/`. macOS needs nothing extra.
+
+## In CI
+
+`e2e.yml` runs each suite inside Playwright's own Docker image for the exact
+Playwright version the suite is locked to (`mcr.microsoft.com/playwright` for
+TypeScript, `mcr.microsoft.com/playwright/java` for Java). The browsers and
+their system libraries are part of the image, so a run downloads nothing from
+the Ubuntu mirrors (EL-023). The images bring their own runtimes: Node.js 26,
+and JDK 25 for Java, which still compiles the suite for Java 21
+(`maven.compiler.release` in the pom).
+
 ## When a test fails
 
 Each suite writes its reports to `reports/` in its own directory, and CI

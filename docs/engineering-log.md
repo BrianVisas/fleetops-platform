@@ -38,6 +38,7 @@ Every entry follows the same structure:
 | [EL-020](#el-020-a-file-nobody-had-touched-showed-as-modified) | A file nobody had touched showed as modified | build | fixed |
 | [EL-021](#el-021-a-health-check-that-could-never-pass) | A health check that could never pass | build | fixed |
 | [EL-022](#el-022-two-pull-requests-each-red-because-of-the-other) | Two pull requests, each red because of the other | CI | fixed |
+| [EL-023](#el-023-twenty-minutes-of-fonts-and-codecs) | Twenty minutes of fonts and codecs | CI | fixed |
 
 ---
 
@@ -766,3 +767,49 @@ nothing to do with the diff, look for what changed outside the repository
 before touching the code. Reporting issues opened after a pull request's base
 commit as warnings would make the check hermetic again; for a new customer
 issue every few weeks, a documented order is cheaper than that code.
+
+---
+
+## EL-023: Twenty minutes of fonts and codecs
+
+2026-11-18 · CI · fixed in the pull request that adds this entry
+
+**Symptom.** On #48, `e2e (playwright-java)` took 22m22s and passed. The same
+job had taken 2m43s on #43, and #48 changed nothing about how it runs. An
+earlier run on #39 had shown the same with the other suite:
+`e2e (playwright-ts)` passed after 17m02s. While the job was still running it
+looked hung, and the first suspicion was a test blocking forever, since the
+Java suite has no per-test time limit. The log disproved that: every test ran
+in its usual time.
+
+**Root cause.** A short script listed every gap of 30 seconds or more between
+two log lines. All of them were inside `playwright install --with-deps`,
+between `Get:` lines from `us-east-2.ec2.archive.ubuntu.com`: 136 s before
+`libproxy1v5`, 243 s after `libflite1`, 93 s after `timgm6mb-soundfont`, and
+more like them. `--with-deps` installs some 150 packages (fonts, GStreamer,
+codecs and the rest that Firefox and WebKit need) from the Ubuntu mirror on
+every run. So the job time depended on the mirror's speed at that moment,
+which nothing in the repository controls, and it hit whichever suite was
+unlucky.
+
+**Fix.** Each suite now runs inside Playwright's own Docker image for the
+version it is locked to, `mcr.microsoft.com/playwright` and
+`mcr.microsoft.com/playwright/java`, with browsers and system libraries
+already in it. `e2e.yml` reads the version from `package-lock.json` and the
+pom, so a Playwright bump moves the image with it, and `run.sh` no longer
+installs system packages. The suite step has a 10-minute limit and the job 20,
+so a slow run fails within minutes instead of half an hour. The images bring
+Node.js 26 and JDK 25, so `@types/node` moves to 26, and the pom still
+compiles for Java 21.
+
+**Verification.** On this pull request, both e2e jobs run their suite inside
+the image, and the suite step's log has no line from an Ubuntu mirror:
+`gh run view --job <id> --log | grep 'Run the playwright' | grep -c archive.ubuntu.com`
+counts 0 for both jobs.
+
+**Lesson.** Before calling something hung, find where the time went: a
+30-line script over the timestamps answered in seconds what guessing would
+not have. And a CI step that installs from a public mirror on every run is
+only as fast as that mirror today. Bake the dependencies into an image that
+is pulled from a registry built for it, and pin that image to the version
+the tests need.
