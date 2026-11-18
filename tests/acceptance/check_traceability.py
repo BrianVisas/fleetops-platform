@@ -4,17 +4,17 @@ Reads the customer issues (GitHub API JSON, from `gh api`) and the tests that
 name them:
 
 - acceptance scenarios in features/*.feature and robot/*.robot (ADR-0006);
-- browser tests in the three Playwright suites under tests/e2e/.
+- browser tests in the Playwright suites under tests/e2e/ (ADR-0007).
 
 An issue is covered when the acceptance suites cover it (Gherkin and Robot), or
-when the browser suites do (all three Playwright languages). The check fails if:
+when the browser suites do (every Playwright suite). The check fails if:
 
 - a customer issue is not covered and is not listed in coverage-exceptions.txt;
 - an issue is listed as an exception but is covered now (the list must shrink);
 - a test is tagged with an issue that is not a customer issue, or with none;
 - the Gherkin scenarios and the Robot tests differ (ADR-0006: same scenarios,
   same names, in every suite);
-- the three Playwright suites differ in the same way.
+- the Playwright suites differ in the same way.
 
 Prints a traceability matrix in Markdown, for the job summary.
 
@@ -76,14 +76,11 @@ def robot_tests(directory):
 #
 #   TypeScript  test.describe("...", { tag: "@issue-40" }, ...)   test("<name>", ...)
 #   Java        @Tag("issue-40") on the class                      @DisplayName("<name>")
-#   Python      pytestmark = pytest.mark.issue(40)                 def test_<name>(...)
 PLAYWRIGHT = {
     "TypeScript": ("playwright-ts/tests", "*.spec.ts",
                    r"""tag:\s*\[?[^\]}]*["']@issue-(\d+)["']""", r"""^\s*test\(\s*["'](.+?)["']\s*,"""),
     "Java": ("playwright-java/src/test/java", "**/*Test.java",
              r"""@Tag\("issue-(\d+)"\)""", r"""@DisplayName\("(.+?)"\)"""),
-    "Python": ("playwright-python/tests", "test_*.py",
-               r"""pytest\.mark\.issue\((\d+)\)""", r"""^def (test_\w+)\("""),
 }
 
 
@@ -95,12 +92,12 @@ def playwright_tests(language):
         text = path.read_text(encoding="utf-8")
         issues = {int(n) for n in re.findall(tag, text)}
         for test in re.findall(name, text, re.MULTILINE):
-            found.append((normalise(test.removeprefix("test_")), issues))
+            found.append((normalise(test), issues))
     return found
 
 
 def normalise(name):
-    """'an API error is shown', 'test_an_api_error_is_shown' -> 'an api error is shown'."""
+    """'an API error is shown, 20 per page' -> 'an api error is shown 20 per page'."""
     return " ".join(re.findall(r"[a-z0-9]+", name.lower()))
 
 
@@ -172,7 +169,7 @@ def main():
                 errors.append(f"{suite} test '{name}' is tagged issue-{number}, which is not a customer issue")
 
     parity(errors, acceptance, "every acceptance suite must have the same scenarios (ADR-0006)")
-    parity(errors, e2e, "every Playwright suite must have the same tests (tests/e2e/README.md)")
+    parity(errors, e2e, "every Playwright suite must have the same tests (ADR-0007)")
 
     print(f"\n{len(acceptance['Gherkin'])} Gherkin scenarios (run by Cucumber and pytest-bdd), "
           f"{len(acceptance['Robot'])} Robot tests, "

@@ -6,7 +6,7 @@ import { VehiclesPage } from "../pages/vehicles-page";
 import { FleetApi, randomModel } from "../support/fleet-api";
 
 // Issue #40: see the fleet and steer rollouts in a browser. One test per
-// acceptance criterion, with the same names in the Java and Python suites.
+// acceptance criterion, with the same names in the Java suite.
 test.describe("dashboard", { tag: "@issue-40" }, () => {
   test("filtering by model shows only that model, 20 per page", async ({ page, request }) => {
     const model = randomModel();

@@ -29,13 +29,13 @@ the decision and the rules that keep the suites in step are in ADR-0006.
 
 `check_traceability.py` runs in CI next to the suites. It reads the customer
 issues from GitHub, the scenarios from `features/` and `robot/`, and the
-browser tests of the three Playwright suites in `tests/e2e`, prints a matrix of
+browser tests of the Playwright suites in `tests/e2e`, prints a matrix of
 issue against tests to the job summary, and fails when:
 
 - a customer issue is not covered and is not listed in
   `coverage-exceptions.txt` with a reason. An issue is covered by the
   acceptance suites (a Gherkin scenario and a Robot test) or by the browser
-  suites (a test in each Playwright language);
+  suites (a test in TypeScript and in Java, ADR-0007);
 - an issue in that list is covered now (the list only ever shrinks);
 - a test is tagged with an issue that is not a customer issue, or with none;
 - a scenario exists in the Gherkin files but not in Robot, or the other way round;
