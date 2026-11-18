@@ -40,6 +40,7 @@ Every entry follows the same structure:
 | [EL-022](#el-022-two-pull-requests-each-red-because-of-the-other) | Two pull requests, each red because of the other | CI | fixed |
 | [EL-023](#el-023-twenty-minutes-of-fonts-and-codecs) | Twenty minutes of fonts and codecs | CI | fixed |
 | [EL-024](#el-024-a-wait-that-never-waited) | A wait that never waited | build | fixed |
+| [EL-025](#el-025-a-time-limit-sized-on-ci) | A time limit sized on CI | build | fixed |
 
 ---
 
@@ -849,3 +850,35 @@ is the case that failed, and passes.
 the first as success. A wait that is never exercised in its waiting state, like
 one that only ever ran on a cluster that was already up, looks fine until the
 first fresh start.
+
+---
+
+## EL-025: A time limit sized on CI
+
+2026-11-18 · build · fixed in #55
+
+**Symptom.** `make cluster-deploy` failed on the Mac with
+`error: timed out waiting for the condition on clusters/fleetops-db` after the
+script's 5 minutes. The database's first pod was still `PodInitializing`. In
+CI, on a fresh cluster, the same script had the database ready 33 seconds
+after the install began.
+
+**Root cause.** Nothing was broken; the limit was too short. The pod's events
+showed it: `Successfully pulled image "ghcr.io/cloudnative-pg/postgresql:17.12…"
+in 6m3.372s`, 153 MB. A GitHub runner downloads that in seconds over a
+datacenter connection; the Mac downloads it into the kind node, through
+Colima, over a home connection. The operator carried on after the script gave
+up, and 15 minutes later the cluster was `Cluster in healthy state`.
+
+**Fix.** The wait is 15 minutes, and the script says beforehand that the first
+run on a machine downloads the image. Later runs find the image in the node and
+take seconds, as in CI.
+
+**Verification.** Run again on the same cluster, `make cluster-deploy` passed:
+`database: PostgreSQL 17.12 … is ready`. The 15 minutes leave more than twice
+the measured download time.
+
+**Lesson.** Size a time limit on the slowest place the script runs, measured,
+not on the fastest. And before raising a limit, read why it ran out: here the
+pod's events gave the download time to the millisecond, which turned a guess
+into a number.

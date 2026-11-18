@@ -24,7 +24,11 @@ echo "== database in $NAMESPACE"
 # it reports ready, so the install is retried.
 retry 60 helm upgrade --install fleetops-postgres deploy/charts/fleetops-postgres \
   --namespace "$NAMESPACE"
-kubectl wait cluster/fleetops-db -n "$NAMESPACE" --for=condition=Ready --timeout=300s
+# The first install on a machine downloads the PostgreSQL image (about 150 MB)
+# into the kind node. In CI that takes seconds; on the Mac it took 6 minutes
+# (EL-025), so the limit is sized for the Mac.
+echo "waiting for PostgreSQL; the first run on a machine downloads its image first"
+kubectl wait cluster/fleetops-db -n "$NAMESPACE" --for=condition=Ready --timeout=900s
 
 # The operator has created the owner's credentials, and PostgreSQL answers.
 for key in username password uri jdbc-uri; do
