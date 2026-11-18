@@ -1,0 +1,57 @@
+# fleet-api: the vehicles, releases and rollouts API. It owns the database
+# schema and runs the Flyway migrations at start, so it is installed first.
+name: fleet-api
+
+image:
+  repository: ghcr.io/brianvisas/fleetops-fleet-api
+
+containerPort: 8080
+
+config:
+  SERVER_PORT: "8080"
+  # The primary of the CloudNativePG cluster (deploy/charts/fleetops-postgres).
+  DB_URL: jdbc:postgresql://fleetops-db-rw:5432/fleetops
+  # 60% of the 512 MiB limit for the heap leaves room for the rest of the JVM.
+  JAVA_OPTS: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC"
+
+secretEnv:
+  DB_USER:
+    secret: fleetops-db-app
+    key: username
+  DB_PASSWORD:
+    secret: fleetops-db-app
+    key: password
+
+# Spring Boot's own probe endpoints (application.yml enables them). The startup
+# probe gives the JVM up to five minutes on a busy laptop before liveness
+# checks begin.
+probes:
+  startup:
+    path: /actuator/health/liveness
+    settings:
+      periodSeconds: 5
+      failureThreshold: 60
+  liveness:
+    path: /actuator/health/liveness
+    settings:
+      periodSeconds: 10
+      failureThreshold: 3
+  readiness:
+    path: /actuator/health/readiness
+    settings:
+      periodSeconds: 5
+      failureThreshold: 3
+
+# No CPU limit: a throttled JVM starts very slowly, and requests already decide
+# where the pod fits.
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    memory: 512Mi
+
+route:
+  enabled: true
+  paths:
+    - /api
