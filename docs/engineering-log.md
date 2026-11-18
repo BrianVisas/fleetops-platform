@@ -41,6 +41,7 @@ Every entry follows the same structure:
 | [EL-023](#el-023-twenty-minutes-of-fonts-and-codecs) | Twenty minutes of fonts and codecs | CI | fixed |
 | [EL-024](#el-024-a-wait-that-never-waited) | A wait that never waited | build | fixed |
 | [EL-025](#el-025-a-time-limit-sized-on-ci) | A time limit sized on CI | build | fixed |
+| [EL-026](#el-026-two-ci-jobs-lost-to-one-refused-download) | Two CI jobs lost to one refused download | CI | fixed |
 
 ---
 
@@ -882,3 +883,49 @@ the measured download time.
 not on the fastest. And before raising a limit, read why it ran out: here the
 pod's events gave the download time to the millisecond, which turned a guess
 into a number.
+
+---
+
+## EL-026: Two CI jobs lost to one refused download
+
+2026-11-18 · CI · fixed in the pull request that adds this entry
+
+**Symptom.** On #55, `acceptance (cucumber)` and `acceptance (robot)` failed
+after about 35 seconds, while `acceptance (pytest-bdd)` in the same run passed.
+#55 changed nothing those jobs use, and a rerun of the failed jobs passed. An
+acceptance job on #41 had failed the same way, in the same time, and passed on
+a rerun; it was not investigated then.
+
+**Root cause.** The rerun hid the first attempt's log from the default view,
+but `gh run view --attempt 1 --log-failed` still had it. Both jobs had failed in
+"Start the stack", while Compose built the fleet-api image:
+
+```
+#37 [fleet-api build 5/7] RUN ./mvnw -B -v && ./mvnw -B -ntp dependency:go-offline
+#37 0.240 wget: Failed to fetch https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.10.0/apache-maven-3.10.0-bin.tar.gz
+```
+
+The Maven wrapper downloads Maven itself with `wget`, once, with no retry, and
+Maven Central refused the request within 0.24 seconds. Central limits
+anonymous traffic, and GitHub runners share their addresses (EL-007 was the
+same limit, hit by Trivy). The exposure is larger than it looks: every job that
+starts the Compose stack, scans an image or builds one builds fleet-api from
+scratch, so a single pull request downloads Maven and all of fleet-api's
+dependencies seven times. One refusal fails a job.
+
+**Fix.** The image build tries the wrapper's download up to four times, 15, 30
+and 45 seconds apart, before it gives up. Maven's own dependency downloads
+already retry.
+
+**Verification.** The loop, run with a stand-in `mvnw` that fails twice and
+then succeeds, printed two retries and went on to `dependency:go-offline`; with
+one that always fails, it stopped after the fourth attempt with exit code 1.
+The real refusal cannot be produced on demand, so the evidence that it is gone
+is in CI: no acceptance job fails in "Start the stack" again.
+
+**Lesson.** Read the log of a flaky failure before rerunning it, and if a rerun
+came first, `--attempt 1` still has the log. "Passed on rerun" is the symptom,
+not the diagnosis: this one had happened before and been rerun away. The deeper
+fix is downloading less: building each image once per pull request and sharing
+it between jobs would turn seven downloads into one. That is recorded as a
+follow-up.

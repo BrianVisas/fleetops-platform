@@ -17,9 +17,20 @@ WORKDIR /build
 # is how you check which Maven built an image. The wrapper downloads Maven with
 # curl or wget if the image has them and falls back to Java otherwise, so the
 # JDK image needs nothing extra installed.
+#
+# The wrapper's own download of Maven has no retry, and Maven Central sometimes
+# refuses a request from a CI runner outright. That failed whole CI jobs in 0.2
+# seconds (EL-026), so the download is tried up to four times, with a growing
+# pause. Maven retries its dependency downloads by itself.
 COPY mvnw pom.xml ./
 COPY .mvn .mvn
-RUN ./mvnw -B -v && ./mvnw -B -ntp dependency:go-offline
+RUN for attempt in 1 2 3 4; do \
+      ./mvnw -B -v && break; \
+      [ "$attempt" -lt 4 ] || exit 1; \
+      echo "Maven download failed (attempt $attempt of 4), retrying in $((attempt * 15)) s"; \
+      sleep $((attempt * 15)); \
+    done \
+ && ./mvnw -B -ntp dependency:go-offline
 
 COPY src ./src
 RUN ./mvnw -B -ntp -DskipTests package
