@@ -1,14 +1,20 @@
-"""Checks that every customer issue is proved by acceptance tests.
+"""Checks that every customer issue is proved by automated tests.
 
-Reads the customer issues (GitHub API JSON, from `gh api`) and the scenarios in
-features/*.feature and robot/*.robot, then fails if:
+Reads the customer issues (GitHub API JSON, from `gh api`) and the tests that
+name them:
 
-- a customer issue has no tagged scenario and is not listed in
-  coverage-exceptions.txt;
+- acceptance scenarios in features/*.feature and robot/*.robot (ADR-0006);
+- browser tests in the three Playwright suites under tests/e2e/.
+
+An issue is covered when the acceptance suites cover it (Gherkin and Robot), or
+when the browser suites do (all three Playwright languages). The check fails if:
+
+- a customer issue is not covered and is not listed in coverage-exceptions.txt;
 - an issue is listed as an exception but is covered now (the list must shrink);
-- a scenario is tagged with an issue that is not a customer issue;
+- a test is tagged with an issue that is not a customer issue, or with none;
 - the Gherkin scenarios and the Robot tests differ (ADR-0006: same scenarios,
-  same names, in every suite).
+  same names, in every suite);
+- the three Playwright suites differ in the same way.
 
 Prints a traceability matrix in Markdown, for the job summary.
 
@@ -21,6 +27,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+E2E = HERE.parent / "e2e"
 TAG = re.compile(r"@?issue-(\d+)$")
 
 
@@ -64,6 +71,39 @@ def robot_tests(directory):
     return found
 
 
+# The Playwright suites keep one test file per issue, with the issue tag on the
+# file's test group, the way a feature file carries its tag:
+#
+#   TypeScript  test.describe("...", { tag: "@issue-40" }, ...)   test("<name>", ...)
+#   Java        @Tag("issue-40") on the class                      @DisplayName("<name>")
+#   Python      pytestmark = pytest.mark.issue(40)                 def test_<name>(...)
+PLAYWRIGHT = {
+    "TypeScript": ("playwright-ts/tests", "*.spec.ts",
+                   r"""tag:\s*\[?[^\]}]*["']@issue-(\d+)["']""", r"""^\s*test\(\s*["'](.+?)["']\s*,"""),
+    "Java": ("playwright-java/src/test/java", "**/*Test.java",
+             r"""@Tag\("issue-(\d+)"\)""", r"""@DisplayName\("(.+?)"\)"""),
+    "Python": ("playwright-python/tests", "test_*.py",
+               r"""pytest\.mark\.issue\((\d+)\)""", r"""^def (test_\w+)\("""),
+}
+
+
+def playwright_tests(language):
+    """(normalised test name, issue numbers) for every test of one Playwright suite."""
+    directory, pattern, tag, name = PLAYWRIGHT[language]
+    found = []
+    for path in sorted((E2E / directory).glob(pattern)):
+        text = path.read_text(encoding="utf-8")
+        issues = {int(n) for n in re.findall(tag, text)}
+        for test in re.findall(name, text, re.MULTILINE):
+            found.append((normalise(test.removeprefix("test_")), issues))
+    return found
+
+
+def normalise(name):
+    """'an API error is shown', 'test_an_api_error_is_shown' -> 'an api error is shown'."""
+    return " ".join(re.findall(r"[a-z0-9]+", name.lower()))
+
+
 def exceptions(path):
     """Issue number -> reason, from lines like '7  covered by k6 in Phase 5'."""
     result = {}
@@ -75,6 +115,16 @@ def exceptions(path):
     return result
 
 
+def parity(errors, suites, rule):
+    """Every suite in the group has exactly the same test names."""
+    names = {suite: {n for n, _ in tests} for suite, tests in suites.items()}
+    every = set().union(*names.values())
+    for name in sorted(every):
+        missing = [suite for suite, have in names.items() if name not in have]
+        if missing:
+            errors.append(f"'{name}' is missing in {' and '.join(missing)}: {rule}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--issues", required=True, help="JSON from the GitHub issues API")
@@ -82,21 +132,24 @@ def main():
 
     issues = {i["number"]: i for i in json.loads(Path(args.issues).read_text(encoding="utf-8"))
               if "pull_request" not in i}
-    gherkin = gherkin_scenarios(HERE / "features")
-    robot = robot_tests(HERE / "robot")
+    acceptance = {"Gherkin": gherkin_scenarios(HERE / "features"), "Robot": robot_tests(HERE / "robot")}
+    e2e = {f"Playwright {language}": playwright_tests(language) for language in PLAYWRIGHT}
     allowed = exceptions(HERE / "coverage-exceptions.txt")
     errors = []
 
     def covering(tests, number):
         return [name for name, tags in tests if number in tags]
 
-    print("## Acceptance test traceability\n")
-    print("| Issue | Title | State | Gherkin scenarios | Robot tests | Coverage |")
-    print("|---|---|---|---|---|---|")
+    columns = {**acceptance, **e2e}
+    print("## Test traceability\n")
+    print("| Issue | Title | State | " + " | ".join(columns) + " | Coverage |")
+    print("|---|---|---|" + "---|" * len(columns) + "---|")
     for number in sorted(issues):
         issue = issues[number]
-        in_gherkin, in_robot = covering(gherkin, number), covering(robot, number)
-        if in_gherkin and in_robot:
+        counts = {suite: len(covering(tests, number)) for suite, tests in columns.items()}
+        by_acceptance = all(counts[s] for s in acceptance)
+        by_e2e = all(counts[s] for s in e2e)
+        if by_acceptance or by_e2e:
             status = "covered"
             if number in allowed:
                 errors.append(f"#{number} is covered now: remove it from coverage-exceptions.txt")
@@ -104,23 +157,26 @@ def main():
             status = f"exception: {allowed[number]}"
         else:
             status = "**MISSING**"
-            errors.append(f"#{number} ({issue['title']}) has no acceptance test in "
-                          + " and ".join(s for s, t in (("Gherkin", in_gherkin), ("Robot", in_robot)) if not t))
-        print(f"| #{number} | {issue['title']} | {issue['state']} "
-              f"| {len(in_gherkin)} | {len(in_robot)} | {status} |")
+            partial = [s for s, n in counts.items() if n]
+            group = e2e if any(s in e2e for s in partial) else acceptance
+            missing = [s for s in group if not counts[s]]
+            errors.append(f"#{number} ({issue['title']}) has no test in " + " and ".join(missing))
+        print(f"| #{number} | {issue['title']} | {issue['state']} | "
+              + " | ".join(str(counts[s]) for s in columns) + f" | {status} |")
 
-    for suite, tests in (("Gherkin", gherkin), ("Robot", robot)):
+    for suite, tests in columns.items():
         for name, tags in tests:
             if not tags:
-                errors.append(f"{suite} scenario '{name}' is not tagged with an issue")
+                errors.append(f"{suite} test '{name}' is not tagged with an issue")
             for number in tags - set(issues):
-                errors.append(f"{suite} scenario '{name}' is tagged issue-{number}, which is not a customer issue")
+                errors.append(f"{suite} test '{name}' is tagged issue-{number}, which is not a customer issue")
 
-    for name in sorted({n for n, _ in gherkin} ^ {n for n, _ in robot}):
-        side = "Gherkin" if name in {n for n, _ in gherkin} else "Robot"
-        errors.append(f"'{name}' exists only in {side}: every suite must have the same scenarios (ADR-0006)")
+    parity(errors, acceptance, "every acceptance suite must have the same scenarios (ADR-0006)")
+    parity(errors, e2e, "every Playwright suite must have the same tests (tests/e2e/README.md)")
 
-    print(f"\n{len(gherkin)} Gherkin scenarios (run by Cucumber and pytest-bdd), {len(robot)} Robot tests.")
+    print(f"\n{len(acceptance['Gherkin'])} Gherkin scenarios (run by Cucumber and pytest-bdd), "
+          f"{len(acceptance['Robot'])} Robot tests, "
+          + ", ".join(f"{len(tests)} {suite} tests" for suite, tests in e2e.items()) + ".")
     if errors:
         print("\n### Problems\n")
         for error in errors:

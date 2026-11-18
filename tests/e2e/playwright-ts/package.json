@@ -1,0 +1,15 @@
+{
+  "name": "fleetops-e2e-playwright-ts",
+  "private": true,
+  "description": "Browser tests of the FleetOps dashboard with Playwright Test (TypeScript)",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "report": "playwright show-report reports/html"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}

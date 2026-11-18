@@ -13,7 +13,8 @@ auto-pause) is built test-first. Release `v0.3.0`.
 | 3 | `test/3-release-and-rollout` | Scenarios for #3, #4 and #5 |
 | 4 | `feat/4-auto-pause` | #6 test-first: the acceptance scenario is written and fails, then the migration, service logic and unit tests make it pass |
 | 5 | `feat/5-web-ui` | Small dashboard (vehicle list, rollout status): static HTML and JS behind nginx, which proxies `/api` to fleet-api |
-| 6 | `test/6-e2e-bake-off` | The same Playwright scenarios in TypeScript, Java and Python, then ADR-0007 picks one |
+| 6 | `test/6-e2e-bake-off` | `tests/e2e`: the same Playwright tests for the dashboard (#40) in TypeScript, Java and Python, each in Chromium, Firefox and WebKit; `e2e.yml` runs them against the Compose stack; the traceability check counts them |
+| 6b | `docs/6-e2e-decision` | ADR-0007: the scores against the criteria in `tests/e2e/README.md`, and which suites stay |
 | 7 | `docs/7-test-strategy` | `docs/TEST_STRATEGY.md`: the test pyramid, what runs on pull requests, nightly and at release |
 
 ## Why the bake-offs
@@ -49,9 +50,9 @@ change once the repository is public.
 ## Done when
 
 - [ ] Every customer issue links to at least one automated acceptance test
-- [ ] An open customer issue without a tagged scenario fails CI
-- [ ] #6 is implemented, and its scenario failed before the implementation existed
-- [ ] Playwright tests run headless in CI, with traces and screenshots on failure
+- [x] An open customer issue without a tagged scenario fails CI
+- [x] #6 is implemented, and its scenario failed before the implementation existed
+- [x] Playwright tests run headless in CI, with traces and screenshots on failure
 - [ ] ADR-0006 and ADR-0007 record the tool decisions
 - [ ] `docs/TEST_STRATEGY.md` is written
 - [ ] Tag `v0.3.0` via release-please

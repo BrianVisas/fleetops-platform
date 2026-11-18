@@ -1,0 +1,2 @@
+# mvnw must keep LF line endings or the shell cannot run it.
+/mvnw text eol=lf

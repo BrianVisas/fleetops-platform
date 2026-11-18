@@ -83,6 +83,46 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # Browser tests (tests/e2e), the same way: one pull request per language for
+  # minor and patch updates. Playwright ships its own browsers per version, so a
+  # Playwright bump is also a browser update, and CI proves it in all three.
+  # The Java suite has its own copy of the Maven wrapper, like the Cucumber suite.
+  - package-ecosystem: npm
+    directory: /tests/e2e/playwright-ts
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      e2e-typescript:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: maven
+    directory: /tests/e2e/playwright-java
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      e2e-java:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: pip
+    directory: /tests/e2e/playwright-python
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      e2e-python:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   # Third-party actions are pinned to commit SHAs with the version in a comment;
   # Dependabot updates both. See EL-016.
   - package-ecosystem: github-actions

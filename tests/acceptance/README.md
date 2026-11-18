@@ -28,14 +28,24 @@ the decision and the rules that keep the suites in step are in ADR-0006.
 ## Traceability
 
 `check_traceability.py` runs in CI next to the suites. It reads the customer
-issues from GitHub and the scenarios from `features/` and `robot/`, prints a
-matrix of issue against scenarios to the job summary, and fails when:
+issues from GitHub, the scenarios from `features/` and `robot/`, and the
+browser tests of the three Playwright suites in `tests/e2e`, prints a matrix of
+issue against tests to the job summary, and fails when:
 
-- a customer issue has no scenario and is not listed in
-  `coverage-exceptions.txt` with a reason;
+- a customer issue is not covered and is not listed in
+  `coverage-exceptions.txt` with a reason. An issue is covered by the
+  acceptance suites (a Gherkin scenario and a Robot test) or by the browser
+  suites (a test in each Playwright language);
 - an issue in that list is covered now (the list only ever shrinks);
-- a scenario is tagged with an issue that is not a customer issue;
-- a scenario exists in the Gherkin files but not in Robot, or the other way round.
+- a test is tagged with an issue that is not a customer issue, or with none;
+- a scenario exists in the Gherkin files but not in Robot, or the other way round;
+- a test is missing from one of the Playwright suites.
+
+The check reads the issues live, but the exceptions from the commit it runs on.
+So a new customer issue turns every pull request red until its tests or its
+exception line reach `main`. Open a customer issue only when the pull request
+that adds its tests or its exception line is ready, and merge that pull request
+next (EL-022).
 
 To run it locally:
 
