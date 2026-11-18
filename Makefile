@@ -1,7 +1,7 @@
 # One entry point for the whole repo.
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help build test up down logs sim ps clean fmt cluster-up cluster-down cluster-status
+.PHONY: help build test up down logs sim ps clean fmt cluster-up cluster-deploy cluster-down cluster-status
 
 help:
 	@echo "make build   - build every service image"
@@ -14,7 +14,8 @@ help:
 	@echo "make clean   - stop the stack and delete the database volume"
 	@echo "make fmt     - format Go code"
 	@echo
-	@echo "make cluster-up     - create the local kind cluster with Envoy Gateway (infra/local)"
+	@echo "make cluster-up     - create the local kind cluster with Envoy Gateway and CloudNativePG (infra/local)"
+	@echo "make cluster-deploy - install FleetOps into the cluster's dev environment"
 	@echo "make cluster-status - show nodes, pods and the gateway"
 	@echo "make cluster-down   - delete the local kind cluster"
 
@@ -58,10 +59,14 @@ fmt:
 cluster-up:
 	infra/local/cluster-up.sh
 
+cluster-deploy:
+	infra/local/install-fleetops.sh
+
 cluster-status:
 	kubectl get nodes
 	kubectl get pods -A
 	kubectl get gateway -A
+	kubectl get cluster.postgresql.cnpg.io -A
 
 cluster-down:
 	infra/local/cluster-down.sh

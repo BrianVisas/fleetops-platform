@@ -1,0 +1,24 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: fleetops
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+spec:
+  instances: {{ .Values.instances }}
+  imageName: {{ .Values.image | quote }}
+  storage:
+    size: {{ .Values.storage.size }}
+  bootstrap:
+    initdb:
+      database: {{ .Values.database }}
+      owner: {{ .Values.owner }}
+  postgresql:
+    parameters:
+      {{- toYaml .Values.parameters | nindent 6 }}
+  resources:
+    {{- toYaml .Values.resources | nindent 4 }}
