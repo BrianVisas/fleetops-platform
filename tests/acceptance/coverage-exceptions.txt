@@ -1,7 +1,6 @@
-# Customer issues that have no acceptance scenario yet, and why.
+# Customer issues that have no automated test yet, and why.
 # check_traceability.py fails when an issue is neither covered nor listed here,
 # and when a listed issue becomes covered. This list only ever shrinks.
 #
 # issue  reason
 7  a load requirement, proved by the k6 tests in Phase 5
-40  the dashboard, proved by the Playwright tests in Phase 3 package 6

@@ -2,8 +2,8 @@ name: acceptance
 
 # Black-box acceptance tests against the whole stack, built from this commit and
 # started with Compose. Three suites run the same customer scenarios (ADR-0006),
-# and a traceability check proves that every customer issue is covered by them.
-# See tests/acceptance/README.md.
+# and a traceability check proves that every customer issue is covered, by them
+# or by the browser tests in e2e.yml. See tests/acceptance/README.md.
 #
 # No path filter: an acceptance result is about the system, and a workflow that
 # always reports can later become a required check (ADR-0001).
@@ -40,7 +40,7 @@ jobs:
         run: gh api "repos/${GITHUB_REPOSITORY}/issues?labels=customer&state=all&per_page=100" > "$RUNNER_TEMP/issues.json"
 
       # The matrix also goes to the job summary, so it is readable on the run page.
-      - name: Every customer issue has acceptance tests in every suite
+      - name: Every customer issue is covered in every suite
         shell: bash
         run: python3 tests/acceptance/check_traceability.py --issues "$RUNNER_TEMP/issues.json" | tee -a "$GITHUB_STEP_SUMMARY"
 

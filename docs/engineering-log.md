@@ -37,6 +37,7 @@ Every entry follows the same structure:
 | [EL-019](#el-019-ci-and-the-image-built-with-different-maven-versions) | CI and the image built with different Maven versions | build | fixed |
 | [EL-020](#el-020-a-file-nobody-had-touched-showed-as-modified) | A file nobody had touched showed as modified | build | fixed |
 | [EL-021](#el-021-a-health-check-that-could-never-pass) | A health check that could never pass | build | fixed |
+| [EL-022](#el-022-two-pull-requests-each-red-because-of-the-other) | Two pull requests, each red because of the other | CI | fixed |
 
 ---
 
@@ -725,3 +726,43 @@ until web-ui is healthy, and the acceptance jobs pass in CI.
 health check, and nothing shows it unless something waits for health. Wait
 locally the way CI waits, and point a health check at the address the server
 actually binds rather than at a name.
+
+---
+
+## EL-022: Two pull requests, each red because of the other
+
+2026-11-17 · CI · resolved by merge order; the rule is in `tests/acceptance/README.md`
+
+**Symptom.** #42, the Go 1.27.4 fix for GO-2026-6859 in `net/http`, failed
+one check, `acceptance/traceability`:
+`#40 (See the fleet and steer rollouts in a browser) has no acceptance test in Gherkin and Robot`.
+#42 does not touch tests or issues, and every other check on it was green,
+govulncheck included. At the same time #41, the dashboard that #40 asks for,
+failed govulncheck on GO-2026-6859, which only #42 fixes. Each pull request was
+red because of the other one.
+
+**Root cause.** `check_traceability.py` combines two sources. It reads the
+customer issues live from the GitHub API, but the exception list from the
+commit it runs on. Opening #40 changed the first source for every branch at
+once, while its exception line (`40  the dashboard, proved by the Playwright
+tests in Phase 3 package 6`) existed only on #41's branch. From that moment on,
+every pull request without #41's change failed traceability, whatever it
+contained. The red check on #42 said nothing about #42.
+
+**Fix.** Merged #42 first. Its own change was proven by its green govulncheck,
+Go tests and acceptance suites, and the one red check was explained by the
+issue state, not by the code. #41 then picked up Go 1.27.4 from `main` and
+merged with every check green. The rule that prevents a repeat is now in
+`tests/acceptance/README.md`: open a customer issue only when the pull request
+that adds its tests or its exception line is ready, and merge that one next.
+
+**Verification.** After #42 merged, #41's checks ran on top of it: 16
+successful, release-please skipped, traceability and govulncheck among the
+green ones.
+
+**Lesson.** A check that reads live state outside the repository is not
+hermetic: it can turn red on a commit nobody changed. When a failure has
+nothing to do with the diff, look for what changed outside the repository
+before touching the code. Reporting issues opened after a pull request's base
+commit as warnings would make the check hermetic again; for a new customer
+issue every few weeks, a documented order is cheaper than that code.

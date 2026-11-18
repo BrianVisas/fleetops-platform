@@ -1,0 +1,12 @@
+{
+  // Only for type checking (npm run typecheck); Playwright compiles the tests itself.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["playwright.config.ts", "pages", "support", "tests"]
+}
