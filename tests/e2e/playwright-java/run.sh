@@ -8,15 +8,13 @@ cd "$(dirname "$0")"
 BROWSERS="${BROWSERS:-chromium firefox webkit}"
 
 # Playwright for Java has no npx; its CLI is a main class in the dependency.
-# On a CI runner, also install the system libraries the browsers need.
-install="install $BROWSERS"
-if [ "${CI:-}" = "true" ]; then
-  install="install --with-deps $BROWSERS"
-fi
+# It downloads the browsers once, and is a no-op in Playwright's Docker image,
+# which has them (CI runs there, see e2e.yml). On a bare Linux machine, the
+# system libraries come first, once: the same command with "install-deps".
 ./mvnw -B -ntp exec:java \
   -Dexec.mainClass=com.microsoft.playwright.CLI \
   -Dexec.classpathScope=test \
-  -Dexec.args="$install"
+  -Dexec.args="install $BROWSERS"
 
 # Every browser runs even when an earlier one failed; the exit code reports any failure.
 status=0

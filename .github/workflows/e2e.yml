@@ -28,7 +28,7 @@ jobs:
   suite:
     name: e2e (${{ matrix.suite }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -36,33 +36,51 @@ jobs:
     env:
       COMPOSE: docker compose -f deploy/compose/docker-compose.yml
       WEB_UI_URL: http://localhost:3000
+      SUITE: ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Start the stack
         run: $COMPOSE up --detach --build --wait --wait-timeout 300
 
-      - name: Set up Node.js
-        if: matrix.suite == 'playwright-ts'
-        uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: tests/e2e/playwright-ts/package-lock.json
+      # Each suite runs in Playwright's own image for the Playwright version it
+      # is locked to. The browsers and every system library they need are baked
+      # in, so nothing comes from the Ubuntu mirrors at run time (EL-023). The
+      # version is read from the lock file and the pom, so a Dependabot bump of
+      # Playwright moves the image with it.
+      - name: Pick the Playwright image
+        id: image
+        shell: bash
+        run: |
+          if [ "$SUITE" = playwright-ts ]; then
+            version=$(jq -r '.packages["node_modules/@playwright/test"].version' tests/e2e/playwright-ts/package-lock.json)
+            image="mcr.microsoft.com/playwright:v${version}-noble"
+          else
+            version=$(sed -n 's:.*<playwright.version>\(.*\)</playwright.version>.*:\1:p' tests/e2e/playwright-java/pom.xml)
+            image="mcr.microsoft.com/playwright/java:v${version}-noble"
+          fi
+          [ -n "$version" ] || { echo "no Playwright version found for $SUITE"; exit 1; }
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Playwright image: $image"
 
-      - name: Set up JDK 21
+      - name: Cache Maven dependencies
         if: matrix.suite == 'playwright-java'
-        uses: actions/setup-java@v6
+        uses: actions/cache@v6
         with:
-          distribution: temurin
-          java-version: "21"
-          cache: maven
-          cache-dependency-path: tests/e2e/playwright-java/pom.xml
+          path: ~/.m2
+          key: e2e-maven-${{ hashFiles('tests/e2e/playwright-java/pom.xml', 'tests/e2e/playwright-java/.mvn/wrapper/maven-wrapper.properties') }}
 
-      # Installs the browsers and their system libraries, then runs the tests in
-      # all three browsers.
+      # --network host: the stack is on this runner's localhost.
+      # --ipc=host: what Playwright recommends for Chromium in Docker.
       - name: Run the ${{ matrix.suite }} suite
-        run: tests/e2e/${{ matrix.suite }}/run.sh
+        timeout-minutes: 10
+        run: >-
+          docker run --rm --network host --ipc=host
+          -v "$PWD:/work" -w /work
+          -v "$HOME/.m2:/root/.m2"
+          -e CI -e WEB_UI_URL
+          "${{ steps.image.outputs.image }}"
+          "tests/e2e/$SUITE/run.sh"
 
       # Traces and screenshots of failed tests are in here; a trace opens at
       # https://trace.playwright.dev or with `npx playwright show-trace`.

@@ -100,9 +100,10 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # The Node.js types follow the Node.js major that runs the suite
-      # (node-version in e2e.yml, 24 LTS); a newer major describes APIs that
-      # runtime does not have. Both move together, by hand (#44).
+      # The Node.js types follow the Node.js major that runs the suite: the one
+      # in Playwright's Docker image (26 since Playwright 1.65, see e2e.yml). A
+      # newer major describes APIs that runtime does not have, so the types move
+      # by hand, with the image.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 

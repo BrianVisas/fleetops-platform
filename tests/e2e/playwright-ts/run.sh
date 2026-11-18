@@ -9,14 +9,11 @@ BROWSERS="${BROWSERS:-chromium firefox webkit}"
 
 npm ci --no-audit --no-fund
 
-# On a CI runner, also install the system libraries the browsers need.
-if [ "${CI:-}" = "true" ]; then
-  # shellcheck disable=SC2086
-  npx playwright install --with-deps $BROWSERS
-else
-  # shellcheck disable=SC2086
-  npx playwright install $BROWSERS
-fi
+# Downloads the browsers once; a no-op in Playwright's Docker image, which has
+# them (CI runs there, see e2e.yml). On a bare Linux machine, the system
+# libraries come first, once: npx playwright install-deps
+# shellcheck disable=SC2086
+npx playwright install $BROWSERS
 
 npm run typecheck
 
