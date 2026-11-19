@@ -7,9 +7,10 @@ name: cluster
 # acceptance suite against it through the gateway.
 #
 # The images are built in their own job, in parallel, from the layer cache the
-# release workflow keeps, and handed to the cluster job as artifacts. Built
-# without that cache, fleet-api downloads Maven and its dependencies from
-# Maven Central on every run, and Central refuses runners at times (EL-027).
+# release workflow keeps, and handed to the cluster job as artifacts. When the
+# cache misses, fleet-api still downloads Maven and its dependencies from Maven
+# Central, which refuses runners at times (EL-027); #58 builds each image once
+# per pull request for every workflow.
 
 on:
   pull_request:

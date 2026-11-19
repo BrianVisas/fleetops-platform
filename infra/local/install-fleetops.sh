@@ -54,8 +54,8 @@ services="fleet-api telemetry-ingest web-ui"
 # the image into the node: no registry, no download.
 #
 # IMAGE_TAG=<tag> skips the build and loads fleetops/<service>:<tag>, which must
-# already be in Docker. CI uses it: its images are built in a separate job, from
-# the build cache, so the cluster job does not download Maven (EL-027).
+# already be in Docker. CI uses it: its images are built once, in a separate
+# job, from the release workflow's build cache when that has the layers (EL-027).
 if [ -n "${IMAGE_TAG:-}" ]; then
   tag=$IMAGE_TAG
   echo "== images $tag, already built"

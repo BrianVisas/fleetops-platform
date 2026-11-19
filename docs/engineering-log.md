@@ -42,7 +42,9 @@ Every entry follows the same structure:
 | [EL-024](#el-024-a-wait-that-never-waited) | A wait that never waited | build | fixed |
 | [EL-025](#el-025-a-time-limit-sized-on-ci) | A time limit sized on CI | build | fixed |
 | [EL-026](#el-026-two-ci-jobs-lost-to-one-refused-download) | Two CI jobs lost to one refused download | CI | fixed |
-| [EL-027](#el-027-the-retry-that-could-not-help) | The retry that could not help | CI | fixed |
+| [EL-027](#el-027-the-retry-that-could-not-help) | The retry that could not help | CI | mitigated, #58 |
+| [EL-028](#el-028-a-cluster-living-in-swap) | A cluster living in swap | local cluster | fixed |
+| [EL-029](#el-029-a-check-that-only-passed-once) | A check that only passed once | local cluster | fixed |
 
 ---
 
@@ -933,55 +935,152 @@ follow-up.
 
 ## EL-027: The retry that could not help
 
-2026-11-18 · CI · fixed in #57
+2026-11-18 · CI · mitigated in #57, fixed by #58
 
 **Symptom.** On #57, the first pull request that installs the services on kind
 in CI, `kind cluster` failed in "Install FleetOps" after about 100 seconds,
 while building the fleet-api image. The log showed the Dockerfile lines of the
-Maven step and `exit code: 1`, and nothing of what the step itself printed. In
-the same run, `image (fleet-api)` in the release workflow built the same
-Dockerfile without trouble. On the Mac, the same script had installed
-everything a few minutes earlier.
+Maven step and `exit code: 1`, and nothing that the step itself printed. On
+the Mac, the same script had installed everything a few minutes earlier.
 
-**Root cause.** Two problems, one hiding the other.
+The first fix moved the cluster job's builds into a job that reads the release
+workflow's layer cache. Its first run failed the same way, and so did
+`image (fleet-api)` in the release workflow, at the same minute. The acceptance
+and image scan jobs of that run, which also build fleet-api, passed.
 
-- `install-fleetops.sh` built with `docker build --quiet`. On failure BuildKit
-  then prints the failing instruction but not its output, so the actual error
-  was lost. What is certain is the step: the `RUN` that downloads Maven and
-  then all of fleet-api's dependencies. The timing fits all four of EL-026's
-  attempts failing (90 seconds of pauses plus the base image pull), but the
-  log cannot tell that apart from a failed dependency download.
-- Either way, the cluster job went to Maven Central on every run. The release
-  workflow's image builds read their layers from the GitHub Actions cache, so
-  with `pom.xml` unchanged they never download anything. The cluster job used
-  plain `docker build` with no cache: an eighth fleet-api build per pull
-  request, and every one of them from scratch. EL-026's retry spreads four
-  attempts over 90 seconds; a runner Central refuses for longer than that still
-  fails.
+**Root cause.** Three problems, each hiding the next.
 
-**Fix.**
+- `install-fleetops.sh` built with `docker build --quiet`. When a build fails,
+  BuildKit then prints the failing instruction but not its output, so the
+  first failure left no error to read.
+- Maven Central refused the runner. With the build output visible, the second
+  run showed the Maven wrapper's download failing four times, 0.16 seconds
+  after each start:
 
-- A new `images` job in `cluster.yml` builds the four images for amd64, in
+  ```
+  #13 0.160 wget: Failed to fetch https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.10.0/apache-maven-3.10.0-bin.tar.gz
+  #13 0.161 Maven download failed (attempt 1 of 4), retrying in 15 s
+  ...
+  #13 90.53 wget: Failed to fetch https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.10.0/apache-maven-3.10.0-bin.tar.gz
+  ```
+
+  Sonatype limits "unusually high-volume traffic" from a "build environment or
+  infrastructure provider", and GitHub's runners share their addresses. Its
+  advice is explicit: "In most cases, the right answer is not to retry harder.
+  More retries usually make the problem worse"
+  ([429 FAQ](https://central.sonatype.org/faq/429-error/)). EL-026's retry
+  loop goes against that, and it did not save a single build here.
+- The cache that should have spared the download did not have the layer. The
+  steps before the Maven step came from the cache; the Maven step did not. The
+  repository's Actions cache held 10.43 GB in 783 entries, at GitHub's 10 GB
+  limit, and 7.6 GB of it belonged to pull requests #35 to #56, all merged and
+  never read again. Above the limit GitHub evicts the least recently used
+  entries, which is how `main`'s fleet-api layers went.
+
+**Fix.** In #57:
+
+- A new `images` job in `cluster.yml` builds the four images once, in
   parallel, reading the release workflow's cache for each service
   (`cache-from: type=gha,scope=<service>`). It does not write to that cache:
-  an amd64-only export would replace the multi-arch one. Each image goes to
-  the cluster job as an artifact, and `install-fleetops.sh` gets
-  `IMAGE_TAG=ci`, which loads the existing images into the node instead of
-  building them.
+  an amd64-only export would replace the multi-arch one. The images reach the
+  cluster job as artifacts, and `install-fleetops.sh` gets `IMAGE_TAG=ci`,
+  which loads them into the node instead of building them.
 - `install-fleetops.sh` builds with `--progress=plain` into a log file and, if
-  a build fails, prints its last 40 lines. On the Mac the build output stays
-  out of the way as before.
+  a build fails, prints the last 40 lines.
+- The caches of the merged pull requests were deleted by hand, from 10.4 GB to
+  2.8 GB.
+
+This lowers the odds; it does not remove them. On a cache miss, every job that
+builds fleet-api still downloads from Maven Central, up to eight at once. #58
+fixes that the way Sonatype asks: each image is built once per pull request and
+every job uses it, only `main` writes the build cache, a closed pull request's
+caches are deleted, and the retry loop goes.
 
 **Verification.** The script, run with stand-in `docker`, `kind`, `helm`,
 `kubectl` and `curl` commands: with `IMAGE_TAG=ci` it loaded the four images
 and built none; without it, it built and loaded three; with a build that
-fails, it printed the build's error line and stopped. In CI, `image
-(fleet-api)` in `cluster.yml` reports its Maven step as `CACHED`, and the
-cluster job installs and passes the acceptance suite.
+fails, it printed the build's error line and stopped. In CI, the evidence is
+`image (fleet-api)` in `cluster.yml` showing the Maven step as `CACHED`.
 
-**Lesson.** A quiet flag is a decision about what the person debugging the
-failure will see; make output quiet on success, never on failure. And a retry
-only covers short outages. When a job keeps depending on a service that rate
-limits shared runners, the fix is to stop calling it, here by reusing a cache
-that already existed. The other jobs still build fleet-api from scratch, which
-is the follow-up to build each image once per pull request.
+**Lesson.** Three, one per problem. Make output quiet on success, never on
+failure: `--quiet` decided what the person debugging would see. A retry only
+covers a short outage, and against a rate limit it is part of the problem.
+And a cache is an optimisation with its own capacity: nothing here watched its
+size until it had been full long enough to evict what mattered.
+
+## EL-028: A cluster living in swap
+
+2026-11-19 · local cluster · fixed in #57
+
+**Symptom.** A second `make cluster-deploy` on the Mac rolled out all three
+services and then failed its last check: the dashboard did not answer through
+the gateway within 60 seconds. A few minutes later it answered `200`. Envoy's
+log showed its configuration stream to the Envoy Gateway controller closing.
+The restart counts showed more: within one minute, between 10:04:40 and
+10:05:33 UTC, the controller manager, the scheduler, Envoy Gateway, Envoy,
+fleet-api and the CloudNativePG operator had all restarted. Since the cluster
+was created the evening before, the operator had restarted 30 times, Envoy
+Gateway 13, the scheduler 13 and the controller manager 12.
+
+**Root cause.** The Mac has 8 GiB of memory and Colima's VM had been given all
+8 GiB. macOS had 16.7 GB of its 17.4 GB of swap in use. Inside the VM nothing
+looked wrong: no swap, 5.6 GB available, but 5.2 GB of that was page cache
+from image builds and `kind load`. To the VM, page cache is free memory; to
+macOS it is memory the VM has used, which macOS has to keep in RAM or in swap.
+Every time the VM touched a page macOS had swapped out, the whole VM stopped
+until it came back. etcd had logged 1066 "took too long" or "slow fdatasync"
+warnings since it started.
+
+The components that restarted together all hold a leader-election lease in
+the API server and exit when they cannot renew it in time. A freeze longer
+than the lease restarts all of them at once. When that hit during a deploy,
+the restarted Envoy Gateway controller had not yet sent Envoy the new web-ui
+pod's address, and Envoy kept sending requests to the old one. The power log
+showed no sleep or wake at the time, so that cause is ruled out.
+
+**Fix.** Colima's VM gets 5 GiB, `colima start --cpu 4 --memory 5`, which
+leaves macOS room for itself. The size is in `infra/local/README.md` and in
+the memory budget in `docs/PHASE4.md`.
+
+**Verification.** After the resize, `make cluster-deploy` passed, and in the
+30 minutes after the VM restarted, with the deploy in them, nothing restarted
+again: every container's last restart was the VM restart itself, at 10:51 to
+10:52 UTC. etcd logged 12 slow-request warnings in that time, against 1066
+before. The node used 2.4 GiB of the VM's 4.8 GiB, with 2.9 GB available. The
+Mac is still tight: it swapped out 85,252 pages, about 1.3 GiB, during the
+deploy, so the image builds remain the moment to keep other applications
+small.
+
+**Lesson.** A VM sized to the whole machine does not fail with an
+out-of-memory error. It gets slow, and the failure shows up somewhere else
+entirely: here, as a gateway check on a correct deploy. Free memory inside the
+VM says nothing about this; the host's swap does.
+
+## EL-029: A check that only passed once
+
+2026-11-19 · local cluster · fixed in #57
+
+**Symptom.** `make cluster-up` on the running cluster, which already had
+FleetOps installed, failed with "the gateway did not answer on
+http://127.0.0.1:8000/", while the dashboard on that same address answered.
+
+**Root cause.** The script's last check sent a request for
+`dev.fleetops.localhost` and waited for Envoy's `404`, "as it should with no
+routes yet". #57 attaches routes for that host, so Envoy answered `200` and
+the check waited for a `404` that would never come. The README says the
+script can run again at any time. CI did not notice, because CI creates the
+cluster once, before anything is installed.
+
+**Fix.** The check asks for `gateway-check.fleetops.localhost`. It is inside
+the listener's `*.fleetops.localhost`, so the request still goes through the
+`fleetops` Gateway, but no route uses it, so Envoy answers `404` whether or
+not FleetOps is installed.
+
+**Verification.** On the Mac, with FleetOps installed, `make cluster-up` ran
+twice in a row and both runs ended with "answers 404 for
+gateway-check.fleetops.localhost"; the dashboard still answered on
+`dev.fleetops.localhost:8000`.
+
+**Lesson.** A check written for the first run ("nothing is there yet") breaks
+on the second. For a script that promises it can run again, the check has to
+test something that holds in every state it can find.

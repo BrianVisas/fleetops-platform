@@ -17,6 +17,17 @@ PostgreSQL. Phase 4 builds on it: Helm charts, then Argo CD.
 
 ## Use
 
+Colima's VM gets 4 CPUs and 5 GiB, once:
+
+```bash
+colima stop
+colima start --cpu 4 --memory 5
+```
+
+On the 8 GiB Mac, a VM with all 8 GiB lived partly in macOS swap. It froze
+whenever it touched a swapped-out page, and the cluster's control plane
+restarted every time a freeze outlasted its leader-election lease (EL-028).
+
 ```bash
 make down          # the Compose stack and the cluster do not both fit in 8 GiB
 make cluster-up
@@ -43,10 +54,11 @@ FLEET_API_URL=http://dev.fleetops.localhost:8000 TELEMETRY_URL=http://dev.fleeto
   tests/acceptance/pytest-bdd/run.sh
 ```
 
-`make cluster-up` ends by sending a request to `http://127.0.0.1:8000` and
-expects Envoy to answer `404`: nothing is routed yet, but the request made it
-from the Mac through Colima and kind to Envoy. Run it again at any time; it
-keeps an existing cluster and re-applies the rest.
+`make cluster-up` ends by sending a request to `http://127.0.0.1:8000` for
+`gateway-check.fleetops.localhost`, a host no route uses, and expects Envoy to
+answer `404`: the request made it from the Mac through Colima and kind to Envoy.
+Run it again at any time, with or without FleetOps installed; it keeps an
+existing cluster and re-applies the rest.
 
 kind switches `kubectl` to the `kind-fleetops` context. `kubectl config
 get-contexts` shows where it points.

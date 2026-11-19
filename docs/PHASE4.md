@@ -66,11 +66,14 @@ polling interval (three minutes by default) between a merge and the sync.
   with a read-only root filesystem where the service allows it, no privilege
   escalation, and resource limits. The Trivy config scan in `security.yml`
   already reads Helm charts and fails on HIGH findings.
-- **The laptop is the budget.** The Mac has 8 GiB of memory in total, and
-  Colima's VM (4 CPUs, 8 GiB) can claim all of it, next to macOS. So the
-  cluster has one node, every component asks for little, the Compose stack is
-  stopped while the cluster runs, and each package measures what it adds
-  (`docker stats` in `cluster.yml`). Whether `staging` fits beside `dev` is
+- **The laptop is the budget.** The Mac has 8 GiB of memory in total.
+  Colima's VM gets 4 CPUs and 5 GiB, so that it fits in memory next to macOS;
+  with all 8 GiB it lived in swap and the control plane kept restarting
+  (EL-028). So the cluster has one node, every component asks for little, the
+  Compose stack is stopped while the cluster runs, and each package measures
+  what it adds (`docker stats` in `cluster.yml`). Measured in package 3: the
+  node uses 1.4 GiB with the database alone, and 2.4 GiB with the database and
+  three services, of the VM's 4.8 GiB. Whether `staging` fits beside `dev` is
   decided on those numbers.
 - **Same tests, new target.** The acceptance suites run unchanged against the
   cluster: they already take their URLs from `FLEET_API_URL` and
