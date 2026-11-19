@@ -45,6 +45,7 @@ Every entry follows the same structure:
 | [EL-027](#el-027-the-retry-that-could-not-help) | The retry that could not help | CI | fixed |
 | [EL-028](#el-028-a-cluster-living-in-swap) | A cluster living in swap | local cluster | fixed |
 | [EL-029](#el-029-a-check-that-only-passed-once) | A check that only passed once | local cluster | fixed |
+| [EL-030](#el-030-a-cache-that-held-back-security-fixes) | A cache that held back security fixes | CI, security | fixed |
 
 ---
 
@@ -1091,3 +1092,50 @@ gateway-check.fleetops.localhost"; the dashboard still answered on
 **Lesson.** A check written for the first run ("nothing is there yet") breaks
 on the second. For a script that promises it can run again, the check has to
 test something that holds in every state it can find.
+
+## EL-030: A cache that held back security fixes
+
+2026-11-19 · CI, security · fixed in #59
+
+**Symptom.** On #59, which builds each image once and scans that build
+(ADR-0009), `image scan (web-ui)` failed on the first run and again on a full
+rerun: six findings, three of them CRITICAL, among them CVE-2026-121810 in
+nginx 1.30.6-r0, fixed in 1.30.7-r0. The image scans on #57, a few hours
+earlier, had passed, and that morning an e2e job had installed nginx 1.30.7-r0
+while it built web-ui.
+
+**Root cause.** In #59's build of web-ui, the layer that upgrades the packages
+came from the cache:
+
+```
+#8 [2/5] RUN apk upgrade --no-cache  && apk add --no-cache nginx
+#8 CACHED
+```
+
+A layer's cache key is its instruction and its inputs, not what Alpine's
+package repository holds today. The instruction had not changed, so BuildKit
+reused the layer `main`'s cache had from before nginx 1.30.7, and the scan
+found exactly what the newer package fixes.
+
+The old setup hid this. The scan job built every image with a plain
+`docker build`, without a cache, so it always scanned fresh packages. The
+release workflow, though, has always built with the layer cache, so the images
+`main` published could carry older packages than the image the scan had
+passed. Building once made the scanned image and the tested image the same, and
+the difference showed on the first run.
+
+**Fix.** The last stage of every Dockerfile is named `runtime`, and both the
+`images` job in `ci.yml` and the release build rebuild it on every run
+(`no-cache-filters: runtime`). The build stages, which resolve pinned inputs
+(the Maven and Go dependencies), still come from the cache, so there is still
+no Maven download.
+
+**Verification.** On #59's next run, web-ui's upgrade step runs instead of
+coming from the cache and installs nginx 1.30.7-r0, all four image scans pass,
+and fleet-api's Maven step is still `CACHED`.
+
+**Lesson.** Cache what is pinned, and rebuild what is meant to change. A layer
+whose job is to fetch today's fixes cannot be cached, because nothing in its
+cache key knows that the world moved on. And a passing scan only means
+something when the scanned image is the one that ships: scanning the published
+images is still on the deferred list.

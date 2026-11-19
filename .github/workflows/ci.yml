@@ -53,9 +53,14 @@ jobs:
       # amd64, the runners' architecture, saved as a tar file for the jobs
       # below. The layer cache has one scope per service, and GitHub keeps it
       # per branch: a pull request reads main's and its own and writes its own,
-      # which cache-cleanup.yml deletes when the pull request closes. The
-      # nightly run builds without the cache, so that the scan sees today's
-      # base images and packages, and refreshes main's cache.
+      # which cache-cleanup.yml deletes when the pull request closes.
+      #
+      # The cache holds the build stages (Maven, Go), whose inputs are pinned.
+      # The runtime stage is rebuilt every time: it upgrades the OS packages,
+      # and a cached upgrade is as old as the cache. The scan caught a cached
+      # web-ui layer with nginx 1.30.6 when 1.30.7 had the fixes (EL-030).
+      # The nightly run builds without any cache, which proves every day that
+      # the images still build from nothing, and refreshes main's cache.
       - name: Build for amd64
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -63,6 +68,7 @@ jobs:
           platforms: linux/amd64
           tags: fleetops/${{ matrix.service }}:ci
           no-cache: ${{ github.event_name == 'schedule' }}
+          no-cache-filters: runtime
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.service }}.tar

@@ -30,7 +30,10 @@ COPY src ./src
 RUN ./mvnw -B -ntp -DskipTests package
 
 # ---- run ----
-FROM eclipse-temurin:21-jre
+# Named "runtime" so that CI can rebuild this stage on every run while the
+# build stage above comes from the cache: an upgrade taken from a cached layer
+# is as old as the cache, and the scan found that layer missing fixes (EL-030).
+FROM eclipse-temurin:21-jre AS runtime
 WORKDIR /app
 
 # curl is only here so compose can health-check the container. In Kubernetes the

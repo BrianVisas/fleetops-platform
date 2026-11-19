@@ -52,12 +52,17 @@ Option 3, in one workflow, `ci.yml`:
   other jobs as artifacts (`fleetops/<service>:ci`). Its layer cache has one
   scope per service; GitHub keeps caches per branch, so a pull request reads
   `main`'s and its own, and writes its own.
+- The cache is for the build stages (Maven, Go), whose inputs are pinned. Each
+  image's last stage is named `runtime` and is rebuilt on every run
+  (`no-cache-filters`), because it upgrades the OS packages and a cached upgrade
+  is as old as the cache (EL-030).
 - The image scan, the acceptance suites, the browser suites and the cluster
   install load those images. Compose starts them with `--no-build`, and the
   cluster install with `IMAGE_TAG=ci`. A shared step,
   `.github/actions/load-images`, fails a job that got no images.
-- The multi-arch release build runs after all of them, reads the same cache,
-  and adds only the arm64 runtime stage. On `main` it publishes.
+- The multi-arch release build runs after all of them, takes the build stages
+  from the same cache and rebuilds the runtime stages for both architectures.
+  On `main` it publishes.
 - `cache-cleanup.yml` deletes a pull request's caches when it closes.
 - The retry loop in fleet-api's Dockerfile goes.
 
@@ -71,10 +76,11 @@ scan, govulncheck); the image scan moved to `ci.yml`, next to the images.
 - Maven Central is contacted once per commit for fleet-api, by the `images`
   job, and only when the cache does not have the layers; before, up to eight
   times. The release build downloads nothing.
-- The scanned, tested and installed image is one build. On `main`, the
-  published amd64 image is rebuilt from that build's cached layers: the same
-  layers, but not yet the same digest. Promoting by digest is part of how a new
-  image reaches `dev` (ADR-0010, Phase 4 package 5).
+- The scanned, tested and installed image is one build. The published images
+  share its build stages, so they carry the same application, but their runtime
+  stage is rebuilt minutes later and fetches the OS packages again. Publishing
+  the tested image itself, by digest, is part of how a new image reaches `dev`
+  (ADR-0010, Phase 4 package 5).
 - Nothing is published unless the scan, all five suites and the cluster
   install passed. A red test on `main` now holds back `:main` and
   `:sha-<commit>`.
@@ -85,9 +91,12 @@ scan, govulncheck); the image scan moved to `ci.yml`, next to the images.
 - The cluster install now runs on every pull request, not only when
   `infra/local` or `deploy/charts` change: the services run there too. That
   costs about four runner minutes per pull request.
-- The nightly run builds without the cache, so the scan sees that day's base
-  images and packages, and it refreshes `main`'s cache. It downloads Maven once
-  a night.
+- The nightly run builds without any cache. That proves every day that the
+  images still build from nothing, and refreshes `main`'s cache. It downloads
+  Maven once a night.
+- Every run upgrades the OS packages of all four images; for fleet-api that is
+  an `apt-get` run of under a minute, and the arm64 runtime stages run under
+  QEMU in the release build.
 - Not covered: `fleet-api.yml` and the Cucumber and Playwright-Java suites
   still run their own Maven for their tests. They now cache the Maven the
   wrapper downloads as well as the dependencies, so they reach Maven Central
