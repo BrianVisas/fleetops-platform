@@ -15,7 +15,7 @@ help:
 	@echo "make fmt     - format Go code"
 	@echo
 	@echo "make cluster-up     - create the local kind cluster with Envoy Gateway and CloudNativePG (infra/local)"
-	@echo "make cluster-deploy - install FleetOps into the cluster's dev environment"
+	@echo "make cluster-deploy - build this checkout and install it into the cluster's dev environment (SIM=1 adds vehicle-sim)"
 	@echo "make cluster-status - show nodes, pods and the gateway"
 	@echo "make cluster-down   - delete the local kind cluster"
 

@@ -69,11 +69,14 @@ fi
 kubectl apply --server-side -f "$manifest" >/dev/null
 kubectl rollout status deployment/cnpg-controller-manager -n cnpg-system --timeout=180s
 
-# The end-to-end check: a request to localhost:8000 reaches Envoy. With no routes
-# attached yet, Envoy answers 404, which is the expected answer here.
+# The end-to-end check: a request to localhost:8000 reaches Envoy. The host is
+# inside the listener's *.fleetops.localhost but no route uses it, so Envoy
+# answers 404 whether or not FleetOps is installed. Checking dev's host, as
+# this once did, failed as soon as dev had routes (EL-029).
+CHECK_HOST=gateway-check.fleetops.localhost
 echo "== checking $GATEWAY_URL"
-retry 60 sh -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: dev.fleetops.localhost' $GATEWAY_URL)\" = 404 ]" || {
+retry 60 sh -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: $CHECK_HOST' $GATEWAY_URL)\" = 404 ]" || {
   echo "the gateway did not answer on $GATEWAY_URL" >&2
   exit 1
 }
-echo "gateway: $GATEWAY_URL answers 404, as it should with no routes yet"
+echo "gateway: $GATEWAY_URL answers 404 for $CHECK_HOST, which has no routes"

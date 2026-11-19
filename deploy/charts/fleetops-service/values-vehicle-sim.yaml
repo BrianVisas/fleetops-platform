@@ -1,0 +1,29 @@
+# vehicle-sim: simulated vehicles sending telemetry and polling for updates.
+# A client only: no port, no Service, no route. Like `make sim` in Compose, it
+# is installed only on request (SIM=1 make cluster-deploy).
+name: vehicle-sim
+
+image:
+  repository: ghcr.io/brianvisas/fleetops-vehicle-sim
+
+args:
+  - "-vehicles"
+  - "10"
+  - "-rate"
+  - "1"
+  - "-fail-rate"
+  - "0"
+  - "-api"
+  - "http://fleet-api:8080"
+  - "-ingest"
+  - "http://telemetry-ingest:8081"
+
+service:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    memory: 64Mi

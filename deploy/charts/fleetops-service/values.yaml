@@ -1,0 +1,63 @@
+# Defaults for every FleetOps service. Each service has its own values file
+# (values-<service>.yaml) on top of these; an environment adds a third with its
+# hostname and image tag.
+#
+# The name is the name of the Deployment, Service, ConfigMap and HTTPRoute. The
+# services find each other by it: web-ui's nginx proxies /api to fleet-api:8080,
+# and vehicle-sim talks to fleet-api and telemetry-ingest. The two defaults
+# below are placeholders, so the chart also renders on its own (helm lint, the
+# Trivy config scan); every service's values file sets both.
+name: fleetops-service
+
+image:
+  repository: ghcr.io/brianvisas/fleetops-service
+  # A released version by default; environments set their own.
+  tag: "0.3.0"
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+# Arguments for the container's entrypoint (vehicle-sim takes its settings here).
+args: []
+
+containerPort: 8080
+
+# Non-secret environment, kept in a ConfigMap. A change rolls the pods.
+config: {}
+
+# Environment from secrets, as VARIABLE: {secret: <name>, key: <key>}. The
+# database credentials come from the secret CloudNativePG generates.
+secretEnv: {}
+
+# HTTP probes, by kind (startup, liveness, readiness): the path, and any other
+# probe settings under "settings".
+probes: {}
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 64Mi
+
+service:
+  enabled: true
+  port: 8080
+
+# The route from the cluster's Gateway (infra/local/gateway.yaml, ADR-0008).
+route:
+  enabled: false
+  host: dev.fleetops.localhost
+  paths: []
+  gateway:
+    name: fleetops
+    namespace: envoy-gateway-system
+    sectionName: http
+
+# Off by default: kind has no metrics-server, so an HPA there would have no
+# CPU figures to act on. Cloud environments (Phase 6) turn it on.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

@@ -1,0 +1,30 @@
+# web-ui: the dashboard, static files behind nginx. nginx proxies /api to
+# fleet-api:8080 by the Service's name, so fleet-api is installed first.
+name: web-ui
+
+image:
+  repository: ghcr.io/brianvisas/fleetops-web-ui
+
+containerPort: 8080
+
+probes:
+  liveness:
+    path: /healthz
+    settings:
+      periodSeconds: 10
+  readiness:
+    path: /healthz
+    settings:
+      periodSeconds: 5
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    memory: 64Mi
+
+route:
+  enabled: true
+  paths:
+    - /

@@ -12,10 +12,21 @@ PostgreSQL. Phase 4 builds on it: Helm charts, then Argo CD.
 | `gateway.yaml` | the `EnvoyProxy` settings for kind, the `GatewayClass` and the `fleetops` `Gateway` |
 | `cluster-up.sh`, `cluster-down.sh` | create and delete the cluster |
 | `namespaces.yaml` | the FleetOps environments, labelled for the gateway and the restricted pod security profile |
-| `install-fleetops.sh` | installs FleetOps into `fleetops-dev` with Helm, until Argo CD does it |
+| `install-fleetops.sh` | builds this checkout's images, loads them into the node and installs FleetOps into `fleetops-dev` with Helm, until Argo CD does it |
 | `.cache/` | downloads, such as the CloudNativePG manifest, checked against `versions.env`; not in git |
 
 ## Use
+
+Colima's VM gets 4 CPUs and 5 GiB, once:
+
+```bash
+colima stop
+colima start --cpu 4 --memory 5
+```
+
+On the 8 GiB Mac, a VM with all 8 GiB lived partly in macOS swap. It froze
+whenever it touched a swapped-out page, and the cluster's control plane
+restarted every time a freeze outlasted its leader-election lease (EL-028).
 
 ```bash
 make down          # the Compose stack and the cluster do not both fit in 8 GiB
@@ -26,12 +37,28 @@ make cluster-down
 ```
 
 `make cluster-deploy` installs the database (`deploy/charts/fleetops-postgres`)
-and waits until PostgreSQL answers.
+and waits until PostgreSQL answers. Then it builds the service images from this
+checkout, copies them into the kind node with `kind load` (no registry, no
+download), and installs fleet-api, telemetry-ingest and web-ui
+(`deploy/charts/fleetops-service`). `SIM=1 make cluster-deploy` adds
+vehicle-sim. It ends with the dashboard and the API answering through the
+gateway: open http://dev.fleetops.localhost:8000.
 
-`make cluster-up` ends by sending a request to `http://127.0.0.1:8000` and
-expects Envoy to answer `404`: nothing is routed yet, but the request made it
-from the Mac through Colima and kind to Envoy. Run it again at any time; it
-keeps an existing cluster and re-applies the rest.
+To run the acceptance tests against the cluster instead of Compose, point them
+at the gateway. Browsers and curl resolve `*.localhost` by themselves; Python
+and Java on macOS need a hosts entry, once:
+
+```bash
+echo "127.0.0.1 dev.fleetops.localhost" | sudo tee -a /etc/hosts
+FLEET_API_URL=http://dev.fleetops.localhost:8000 TELEMETRY_URL=http://dev.fleetops.localhost:8000 \
+  tests/acceptance/pytest-bdd/run.sh
+```
+
+`make cluster-up` ends by sending a request to `http://127.0.0.1:8000` for
+`gateway-check.fleetops.localhost`, a host no route uses, and expects Envoy to
+answer `404`: the request made it from the Mac through Colima and kind to Envoy.
+Run it again at any time, with or without FleetOps installed; it keeps an
+existing cluster and re-applies the rest.
 
 kind switches `kubectl` to the `kind-fleetops` context. `kubectl config
 get-contexts` shows where it points.
@@ -52,4 +79,9 @@ Routes use one hostname per environment: `dev.fleetops.localhost` and
 
 `.github/workflows/cluster.yml` lints the charts, then runs `cluster-up.sh` and
 `install-fleetops.sh` on a runner whenever `infra/local` or `deploy/charts`
-changes, with the same versions, and prints what the cluster uses.
+changes, with the same versions, runs the pytest-bdd acceptance suite against
+the cluster, and prints what the cluster uses.
+
+CI builds the images in a separate job, from the layer cache the release
+workflow keeps, and runs `install-fleetops.sh` with `IMAGE_TAG=ci`, which loads
+those images instead of building them again (EL-027).

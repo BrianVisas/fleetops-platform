@@ -2,9 +2,15 @@ name: cluster
 
 # Creates the local kind cluster on a runner with the same scripts, versions,
 # charts and manifests as on the Mac (infra/local, deploy/charts), checks that
-# a request reaches Envoy through the port mapping, and installs FleetOps into
-# it. Later Phase 4 packages add the services and run the acceptance suites
-# against this cluster.
+# a request reaches Envoy through the port mapping, installs FleetOps into it
+# (database and services, built from this commit), and runs the pytest-bdd
+# acceptance suite against it through the gateway.
+#
+# The images are built in their own job, in parallel, from the layer cache the
+# release workflow keeps, and handed to the cluster job as artifacts. When the
+# cache misses, fleet-api still downloads Maven and its dependencies from Maven
+# Central, which refuses runners at times (EL-027); #58 builds each image once
+# per pull request for every workflow.
 
 on:
   pull_request:
@@ -28,10 +34,44 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  kind:
-    name: kind cluster
+  images:
+    name: image (${{ matrix.service }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      matrix:
+        service: [fleet-api, telemetry-ingest, web-ui, vehicle-sim]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Reads the cache scope release.yml writes for this service, and does not
+      # write to it: an amd64-only export would replace the multi-arch cache.
+      # The image is saved as a tar file for the cluster job. No provenance or
+      # SBOM: the tar is a test input, never published.
+      - name: Build for amd64
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/${{ matrix.service }}
+          platforms: linux/amd64
+          tags: fleetops/${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.service }}.tar
+          provenance: false
+          sbom: false
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/${{ matrix.service }}.tar
+          retention-days: 1
+
+  kind:
+    name: kind cluster
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -52,15 +92,65 @@ jobs:
           kubectl version --client
 
       - name: Lint the charts
-        run: helm lint deploy/charts/*/
+        run: |
+          helm lint deploy/charts/*/
+          for values in deploy/charts/fleetops-service/values-*.yaml; do
+            helm lint deploy/charts/fleetops-service --values "$values"
+          done
 
       - name: Create the cluster
         timeout-minutes: 10
         run: infra/local/cluster-up.sh
 
+      - name: Download the images
+        uses: actions/download-artifact@v8
+        with:
+          pattern: image-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/images
+
+      - name: Load the images into Docker
+        run: |
+          for image in "$RUNNER_TEMP"/images/*.tar; do
+            docker load --input "$image"
+          done
+
+      # IMAGE_TAG=ci: the images from the job above, loaded into the node
+      # instead of built again.
       - name: Install FleetOps
-        timeout-minutes: 10
+        timeout-minutes: 15
+        env:
+          IMAGE_TAG: ci
+          SIM: 1
         run: infra/local/install-fleetops.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: tests/acceptance/pytest-bdd/requirements.txt
+
+      # The same scenarios as acceptance.yml, against the cluster instead of
+      # Compose. *.localhost needs no DNS on most systems; the hosts entry makes
+      # sure of it for Python.
+      - name: Acceptance tests on the cluster
+        timeout-minutes: 10
+        env:
+          FLEET_API_URL: http://dev.fleetops.localhost:8000
+          TELEMETRY_URL: http://dev.fleetops.localhost:8000
+        run: |
+          echo "127.0.0.1 dev.fleetops.localhost" | sudo tee -a /etc/hosts
+          tests/acceptance/pytest-bdd/run.sh
+
+      - name: Upload the acceptance report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: acceptance-on-kind
+          path: tests/acceptance/pytest-bdd/reports/
+          retention-days: 14
+          if-no-files-found: warn
 
       # What the cluster costs, for the laptop budget in docs/PHASE4.md.
       - name: Resource use
@@ -76,6 +166,10 @@ jobs:
           kubectl describe gateway fleetops -n envoy-gateway-system || true
           kubectl logs -n envoy-gateway-system deployment/envoy-gateway --tail=100 || true
           kubectl get events -n fleetops-dev --sort-by=.lastTimestamp || true
+          kubectl get pods,svc,httproute -n fleetops-dev -o wide || true
+          for d in fleet-api telemetry-ingest web-ui vehicle-sim; do
+            kubectl logs -n fleetops-dev deployment/$d --tail=50 || true
+          done
           kubectl describe cluster.postgresql.cnpg.io fleetops-db -n fleetops-dev || true
           kubectl logs -n cnpg-system deployment/cnpg-controller-manager --tail=100 || true
 

@@ -1,0 +1,45 @@
+# telemetry-ingest: takes vehicle readings and serves the latest one per vehicle.
+name: telemetry-ingest
+
+image:
+  repository: ghcr.io/brianvisas/fleetops-telemetry-ingest
+
+containerPort: 8081
+
+config:
+  PORT: "8081"
+  DB_MAX_CONNS: "10"
+
+# The whole connection string, postgresql://user:password@host:5432/fleetops,
+# as CloudNativePG generates it.
+secretEnv:
+  DB_URL:
+    secret: fleetops-db-app
+    key: uri
+
+probes:
+  liveness:
+    path: /healthz
+    settings:
+      periodSeconds: 10
+  readiness:
+    path: /healthz
+    settings:
+      periodSeconds: 5
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+service:
+  port: 8081
+
+# The two paths the API has: POST /telemetry, GET /vehicles/{id}/latest.
+route:
+  enabled: true
+  paths:
+    - /telemetry
+    - /vehicles
