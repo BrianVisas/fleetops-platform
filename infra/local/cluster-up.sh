@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Creates the local kind cluster with what every environment on it shares: the
 # entry point, Envoy Gateway (ADR-0008), and the CloudNativePG operator. Then
-# proves the path from localhost:8000 to Envoy works.
+# proves the path from localhost:8000 to Envoy works. After gitops-bootstrap.sh,
+# Argo CD manages the same releases from the same charts and values (ADR-0010).
 # Safe to run again: an existing cluster is kept, the rest is re-applied.
 set -eu
 cd "$(dirname "$0")"
@@ -53,20 +54,23 @@ kubectl wait pods -n envoy-gateway-system \
   -l gateway.envoyproxy.io/owning-gateway-name=fleetops \
   --for=condition=Ready --timeout=180s
 
-echo "== CloudNativePG $CNPG_VERSION"
-manifest=".cache/cnpg-$CNPG_VERSION.yaml"
-if [ ! -f "$manifest" ] || [ "$(sha256 "$manifest")" != "$CNPG_MANIFEST_SHA256" ]; then
+echo "== CloudNativePG $CNPG_VERSION (chart $CNPG_CHART_VERSION)"
+# The chart archive from the GitHub release, checked against versions.env.
+# Argo CD later manages the same release from the same chart and values.
+chart=".cache/cloudnative-pg-$CNPG_CHART_VERSION.tgz"
+if [ ! -f "$chart" ] || [ "$(sha256 "$chart")" != "$CNPG_CHART_SHA256" ]; then
   mkdir -p .cache
-  curl -sSfL -o "$manifest" \
-    "https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v$CNPG_VERSION/cnpg-$CNPG_VERSION.yaml"
+  curl -sSfL -o "$chart" \
+    "https://github.com/cloudnative-pg/charts/releases/download/cloudnative-pg-v$CNPG_CHART_VERSION/cloudnative-pg-$CNPG_CHART_VERSION.tgz"
 fi
-[ "$(sha256 "$manifest")" = "$CNPG_MANIFEST_SHA256" ] || {
-  echo "the CloudNativePG manifest does not match its checksum in versions.env" >&2
+[ "$(sha256 "$chart")" = "$CNPG_CHART_SHA256" ] || {
+  echo "the CloudNativePG chart does not match its checksum in versions.env" >&2
   exit 1
 }
-# Server-side apply, as the operator's documentation asks: its CRDs are too
-# large for the annotation a client-side apply keeps.
-kubectl apply --server-side -f "$manifest" >/dev/null
+helm upgrade --install cnpg "$chart" \
+  --namespace cnpg-system --create-namespace \
+  --values cnpg-values.yaml \
+  --wait --timeout 5m
 kubectl rollout status deployment/cnpg-controller-manager -n cnpg-system --timeout=180s
 
 # The end-to-end check: a request to localhost:8000 reaches Envoy. The host is

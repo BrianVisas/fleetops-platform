@@ -15,6 +15,11 @@ image:
   tag: "0.3.0"
   pullPolicy: IfNotPresent
 
+# Secrets with registry credentials, by name. The GHCR images are private, so
+# the Argo CD environments name the pull secret gitops-bootstrap.sh creates in
+# each namespace (deploy/gitops/envs). Images loaded into kind need none.
+imagePullSecrets: []
+
 replicas: 1
 
 # Arguments for the container's entrypoint (vehicle-sim takes its settings here).

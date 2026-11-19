@@ -22,6 +22,15 @@ retry() {
   done
 }
 
+# Once Argo CD runs the cluster (gitops-bootstrap.sh), dev changes through git
+# only: a manual install here would be undone by Argo CD's next sync anyway.
+# The namespace alone says nothing (namespaces.yaml creates it); Argo CD's CRD does.
+if kubectl get crd applications.argoproj.io >/dev/null 2>&1; then
+  echo "Argo CD manages this cluster: change dev through a pull request to" >&2
+  echo "deploy/gitops, or start a fresh cluster for a manual install" >&2
+  exit 1
+fi
+
 kubectl apply -f infra/local/namespaces.yaml
 
 echo "== database in $NAMESPACE"

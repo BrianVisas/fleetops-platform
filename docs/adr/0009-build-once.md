@@ -82,7 +82,7 @@ scan, govulncheck); the image scan moved to `ci.yml`, next to the images.
   share its build stages, so they carry the same application, but their runtime
   stage is rebuilt minutes later and fetches the OS packages again. Publishing
   the tested image itself, by digest, is part of how a new image reaches `dev`
-  (ADR-0010, Phase 4 package 5).
+  (ADR-0011, Phase 4 package 5).
 - Nothing is published unless the scan, all five suites and the cluster
   install passed. A red test on `main` now holds back `:main` and
   `:sha-<commit>`.

@@ -2,18 +2,21 @@
 
 A one-node kind cluster on Colima, with what every environment on it shares:
 Envoy Gateway as the entry point (ADR-0008) and the CloudNativePG operator for
-PostgreSQL. Phase 4 builds on it: Helm charts, then Argo CD.
+PostgreSQL. FleetOps runs on it in two ways: installed by hand from this
+checkout (`make cluster-deploy`), or run by Argo CD from git after a one-time
+`make gitops-bootstrap` (ADR-0010).
 
 | File | What it is |
 |------|------------|
 | `kind-config.yaml` | the cluster: one node, port 30080 mapped to `127.0.0.1:8000` |
 | `versions.env` | pinned versions and checksums, read by `cluster-up.sh` and by CI |
-| `envoy-gateway-values.yaml` | values for the Envoy Gateway Helm chart |
+| `envoy-gateway-values.yaml`, `cnpg-values.yaml` | values for the Envoy Gateway and CloudNativePG Helm charts, used by `cluster-up.sh` and by Argo CD |
 | `gateway.yaml` | the `EnvoyProxy` settings for kind, the `GatewayClass` and the `fleetops` `Gateway` |
 | `cluster-up.sh`, `cluster-down.sh` | create and delete the cluster |
-| `namespaces.yaml` | the FleetOps environments, labelled for the gateway and the restricted pod security profile |
-| `install-fleetops.sh` | builds this checkout's images, loads them into the node and installs FleetOps into `fleetops-dev` with Helm, until Argo CD does it |
-| `.cache/` | downloads, such as the CloudNativePG manifest, checked against `versions.env`; not in git |
+| `namespaces.yaml` | `fleetops-dev`, `fleetops-staging` and `argocd`, labelled for the gateway; the FleetOps ones enforce the restricted pod security profile |
+| `install-fleetops.sh` | builds this checkout's images, loads them into the node and installs FleetOps into `fleetops-dev` with Helm, on a cluster without Argo CD |
+| `gitops-bootstrap.sh` | once per cluster: installs Argo CD, creates its credentials in the cluster, and hands the cluster to `deploy/gitops` |
+| `.cache/` | downloads, such as the chart archives, checked against `versions.env`; not in git |
 
 ## Use
 
@@ -62,6 +65,40 @@ existing cluster and re-applies the rest.
 
 kind switches `kubectl` to the `kind-fleetops` context. `kubectl config
 get-contexts` shows where it points.
+
+## GitOps
+
+After `make cluster-up`, on a cluster without a manual install:
+
+```bash
+make gitops-bootstrap
+make gitops-status
+```
+
+It needs two credentials, which stay in `~/.config/fleetops` and in the
+cluster and never in git:
+
+- **a deploy key** for Argo CD to read this repository. The bootstrap creates
+  it and adds it to the repository, read-only, with `gh`.
+- **a GHCR token** for the cluster to pull the private images. GHCR has no
+  fine-grained tokens, so it is a classic one; create it with only
+  `read:packages` at
+  https://github.com/settings/tokens/new?scopes=read:packages&description=fleetops-ghcr-pull
+  and save it:
+
+  ```bash
+  mkdir -p ~/.config/fleetops
+  (umask 077; pbpaste > ~/.config/fleetops/ghcr-read-token)
+  ```
+
+  The bootstrap refuses a token with any other scope.
+
+It ends with every application synced and healthy, and the dashboards
+answering on http://dev.fleetops.localhost:8000 and
+http://staging.fleetops.localhost:8000. Argo CD's UI is on
+http://argocd.fleetops.localhost:8000. From then on, a change to the cluster
+is a pull request to `deploy/gitops` (see its README), and
+`make cluster-deploy` refuses to run.
 
 ## Ports
 

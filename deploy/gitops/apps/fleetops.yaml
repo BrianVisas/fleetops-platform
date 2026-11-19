@@ -1,0 +1,107 @@
+# The FleetOps environments: one Application per environment and component,
+# generated from the lists below. dev gets every service including the
+# simulator, which keeps traffic flowing; staging gets the same services
+# without it. prod has its values in Phase 6, when it has a cluster.
+#
+# Within an environment the components start in any order and settle: fleet-api
+# waits for the database, and telemetry-ingest restarts until fleet-api has run
+# the migrations. Kubernetes' restarts do the ordering; the probes keep traffic
+# away until each service is ready.
+#
+# The image tag and the hostname of an environment are in envs/<env>/values.yaml.
+# Moving dev to a new image is a change to that one file (package 5).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: fleetops-databases
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+          - env: staging
+  template:
+    metadata:
+      name: "fleetops-{{ .env }}-postgres"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: fleetops
+      source:
+        repoURL: git@github.com:BrianVisas/fleetops-platform.git
+        targetRevision: main
+        path: deploy/charts/fleetops-postgres
+        helm:
+          releaseName: fleetops-postgres
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "fleetops-{{ .env }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: fleetops-services
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - { env: dev, service: fleet-api }
+          - { env: dev, service: telemetry-ingest }
+          - { env: dev, service: web-ui }
+          - { env: dev, service: vehicle-sim }
+          - { env: staging, service: fleet-api }
+          - { env: staging, service: telemetry-ingest }
+          - { env: staging, service: web-ui }
+  template:
+    metadata:
+      name: "fleetops-{{ .env }}-{{ .service }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: fleetops
+      sources:
+        - repoURL: git@github.com:BrianVisas/fleetops-platform.git
+          targetRevision: main
+          path: deploy/charts/fleetops-service
+          helm:
+            releaseName: "{{ .service }}"
+            # The service's own values, then the environment's.
+            valueFiles:
+              - "$values/deploy/charts/fleetops-service/values-{{ .service }}.yaml"
+              - "$values/deploy/gitops/envs/{{ .env }}/values.yaml"
+        - repoURL: git@github.com:BrianVisas/fleetops-platform.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "fleetops-{{ .env }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

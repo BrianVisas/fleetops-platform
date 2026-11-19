@@ -1,11 +1,14 @@
-# The FleetOps environments on the local cluster. Argo CD takes these over in
-# Phase 4 package 4; until then install-fleetops.sh applies them.
+# The namespaces on the local cluster that the Gateway serves. Argo CD keeps
+# them in sync from git (deploy/gitops/apps/platform-config.yaml); before
+# that, install-fleetops.sh and gitops-bootstrap.sh apply them.
 #
 # - fleetops.io/gateway: the Gateway (gateway.yaml) accepts routes only from
 #   namespaces with this label.
 # - pod-security: the "restricted" profile rejects any pod that runs as root,
 #   can escalate privileges, or keeps Linux capabilities. The images already
 #   run as uid 10001; this makes the cluster enforce it.
+#
+# staging runs here too until Phase 6 gives it a cloud cluster (ADR-0010).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -13,4 +16,25 @@ metadata:
   labels:
     fleetops.io/gateway: "true"
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleetops-staging
+  labels:
+    fleetops.io/gateway: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# Argo CD's UI is served through the Gateway, at argocd.fleetops.localhost.
+# "warn" only: Argo CD is a third-party chart, and a restricted-profile
+# violation in one of its pods should show as a warning, not stop the
+# component that runs everything else.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    fleetops.io/gateway: "true"
     pod-security.kubernetes.io/warn: restricted

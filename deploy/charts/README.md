@@ -27,8 +27,9 @@ keep in step. So there is one chart, and each service is a values file:
 | route paths | `/api` | `/telemetry`, `/vehicles` | `/` | none |
 | memory request / limit | 512 Mi / 512 Mi | 32 Mi / 128 Mi | 16 Mi / 64 Mi | 16 Mi / 64 Mi |
 
-An environment adds its own values on top: the hostname (`route.host`) and the
-image tag.
+An environment adds its own values on top: the hostname (`route.host`), the
+image tag, and the pull secret for the private GHCR images (`imagePullSecrets`).
+Argo CD's environments keep them in `deploy/gitops/envs/<env>/values.yaml`.
 
 Every pod runs as uid 10001 with no privilege escalation, no Linux capabilities,
 a read-only root filesystem with `/tmp` as the one writable place, and no

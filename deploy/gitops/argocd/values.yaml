@@ -1,0 +1,89 @@
+# Values for Argo CD's Helm chart on the local cluster. gitops-bootstrap.sh
+# installs the chart with these values once; after that Argo CD manages its
+# own release from the same chart and values (apps/argocd.yaml), so a change
+# here is a pull request like any other.
+
+global:
+  domain: argocd.fleetops.localhost
+
+configs:
+  params:
+    # Plain HTTP behind the Gateway, like the rest of the local cluster.
+    # Phase 6 puts TLS on the cloud gateways.
+    server.insecure: true
+
+  cm:
+    url: http://argocd.fleetops.localhost:8000
+    # Only the bootstrap admin user; there is no SSO on a laptop.
+    admin.enabled: true
+    exec.enabled: false
+    # Argo CD has no health check for Applications of its own since 1.8.
+    # Without one, the root application's sync waves do not wait for a
+    # child application to be healthy before starting the next wave. This
+    # is the check the Argo CD documentation gives for app-of-apps.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+
+# No SSO and no notifications on the local cluster: two pods fewer.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
+# Small requests, because the whole cluster has to fit on a laptop; the
+# limits leave room for the repo server rendering charts.
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 768Mi
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+server:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  # The UI through the cluster's Gateway (ADR-0008).
+  httproute:
+    enabled: true
+    parentRefs:
+      - name: fleetops
+        namespace: envoy-gateway-system
+        sectionName: http
+    hostnames:
+      - argocd.fleetops.localhost
+applicationSet:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+redis:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi

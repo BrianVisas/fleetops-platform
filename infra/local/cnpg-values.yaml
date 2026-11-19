@@ -1,0 +1,14 @@
+# Values for CloudNativePG's Helm chart, used by cluster-up.sh and by Argo CD
+# (deploy/gitops/apps/cloudnative-pg.yaml), so both install the same thing.
+
+# The operator keeps the name it had when it was installed from the release
+# manifest; scripts and diagnostics wait on deployment/cnpg-controller-manager.
+fullnameOverride: cnpg-controller-manager
+
+# Small, because the whole cluster has to fit on a laptop.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
