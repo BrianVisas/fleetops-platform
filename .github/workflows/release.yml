@@ -1,5 +1,8 @@
 name: release
 
+# Called by ci.yml once the images it built have passed the scan, the
+# acceptance and browser suites and the install on kind (ADR-0009).
+#
 # On every push to main:
 #   - release-please keeps a release pull request up to date from the
 #     Conventional Commits since the last release;
@@ -12,24 +15,17 @@ name: release
 # On pull requests the same multi-arch build runs without pushing, so a
 # Dockerfile that only breaks on arm64 fails the PR instead of main.
 #
-# Why one workflow and not a separate one triggered by the release tag: a tag
-# created with GITHUB_TOKEN does not trigger other workflows. Publishing from a
-# job that depends on release-please is the documented way round that, and it
-# needs no personal access token. See ADR-0005.
+# Why release-please and the images share one workflow run and not a separate
+# one triggered by the release tag: a tag created with GITHUB_TOKEN does not
+# trigger other workflows. Publishing from a job that depends on release-please
+# is the documented way round that, and it needs no personal access token.
+# See ADR-0005.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: release-${{ github.ref }}
-  # A superseded PR build can be cancelled; a publish to main must never be
-  # stopped half-way through pushing.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   release-please:
@@ -107,10 +103,15 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Layer cache in the GitHub Actions cache, one scope per service, so
-          # an unchanged go.mod or pom.xml skips the dependency download.
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # Two cache scopes per service. <service> is written by the images job
+          # in ci.yml, which ran first in this workflow run: the build stages
+          # (Maven, Go) and the amd64 image come from there, so this build
+          # downloads no dependencies. <service>-release keeps what only this
+          # build makes, the arm64 runtime stage.
+          cache-from: |
+            type=gha,scope=${{ matrix.service }}
+            type=gha,scope=${{ matrix.service }}-release
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-release
           # A record of how the image was built (source, commit, builder, build
           # args) and of what it contains, attached to the image as attestations.
           # They are not signed; signing (cosign) is a later step.

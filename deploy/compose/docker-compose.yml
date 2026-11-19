@@ -1,5 +1,9 @@
 name: fleetops
 
+# The services' images are named fleetops/<service>:${FLEETOPS_TAG}. `make up`
+# builds them as :local. CI loads the images its images job built as :ci and
+# starts the stack with --no-build, so the suites test exactly those (ADR-0009).
+
 services:
   db:
     image: postgres:17
@@ -18,6 +22,7 @@ services:
       retries: 10
 
   fleet-api:
+    image: fleetops/fleet-api:${FLEETOPS_TAG:-local}
     build:
       context: ../../services/fleet-api
     environment:
@@ -33,6 +38,7 @@ services:
     restart: unless-stopped
 
   telemetry-ingest:
+    image: fleetops/telemetry-ingest:${FLEETOPS_TAG:-local}
     build:
       context: ../../services/telemetry-ingest
     environment:
@@ -51,6 +57,7 @@ services:
     restart: unless-stopped
 
   web-ui:
+    image: fleetops/web-ui:${FLEETOPS_TAG:-local}
     build:
       context: ../../services/web-ui
     ports:
@@ -61,6 +68,7 @@ services:
     restart: unless-stopped
 
   vehicle-sim:
+    image: fleetops/vehicle-sim:${FLEETOPS_TAG:-local}
     build:
       context: ../../services/vehicle-sim
     command:

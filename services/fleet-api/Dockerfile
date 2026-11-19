@@ -18,19 +18,13 @@ WORKDIR /build
 # curl or wget if the image has them and falls back to Java otherwise, so the
 # JDK image needs nothing extra installed.
 #
-# The wrapper's own download of Maven has no retry, and Maven Central sometimes
-# refuses a request from a CI runner outright. That failed whole CI jobs in 0.2
-# seconds (EL-026), so the download is tried up to four times, with a growing
-# pause. Maven retries its dependency downloads by itself.
+# Maven Central refuses downloads from CI runners at times, and retrying does
+# not help: Sonatype's advice is not to retry harder, and a four-attempt loop
+# here (EL-026) never saved a build. CI builds this image once per commit, from
+# its layer cache, instead (ADR-0009, EL-027).
 COPY mvnw pom.xml ./
 COPY .mvn .mvn
-RUN for attempt in 1 2 3 4; do \
-      ./mvnw -B -v && break; \
-      [ "$attempt" -lt 4 ] || exit 1; \
-      echo "Maven download failed (attempt $attempt of 4), retrying in $((attempt * 15)) s"; \
-      sleep $((attempt * 15)); \
-    done \
- && ./mvnw -B -ntp dependency:go-offline
+RUN ./mvnw -B -v && ./mvnw -B -ntp dependency:go-offline
 
 COPY src ./src
 RUN ./mvnw -B -ntp -DskipTests package

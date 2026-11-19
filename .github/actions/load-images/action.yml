@@ -1,0 +1,31 @@
+name: Load the images
+description: >-
+  Downloads the service images that the images job in ci.yml built for this
+  commit, and loads them into Docker as fleetops/<service>:ci (ADR-0009).
+
+inputs:
+  pattern:
+    description: Which image artifacts to load; image-<service> for one.
+    default: image-*
+
+runs:
+  using: composite
+  steps:
+    - name: Download the images
+      uses: actions/download-artifact@v8
+      with:
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: true
+        path: ${{ runner.temp }}/images
+
+    # Fails if nothing was downloaded: a job that went on without its images
+    # would build or pull something else and test that instead.
+    - name: Load the images into Docker
+      shell: bash
+      run: |
+        shopt -s nullglob
+        images=("$RUNNER_TEMP"/images/*.tar)
+        [ "${#images[@]}" -gt 0 ] || { echo "no images downloaded for '${{ inputs.pattern }}'"; exit 1; }
+        for image in "${images[@]}"; do
+          docker load --input "$image"
+        done

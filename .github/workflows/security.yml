@@ -1,5 +1,9 @@
 name: security
 
+# Secrets, configuration and Go dependencies, read from the source. The image
+# scans and their SBOMs run in ci.yml, on the images it builds for the commit,
+# so that what is scanned is what is tested and shipped (ADR-0009).
+
 on:
   pull_request:
   push:
@@ -64,8 +68,8 @@ jobs:
       # Deliberately NOT scanning dependency manifests here. Trivy resolves a
       # pom.xml by fetching its parent and BOM chain from Maven Central, which
       # rate-limits anonymous bulk requests (429, Retry-After 1800) and takes the
-      # whole job down with it. The image scan below reads the jars and binaries
-      # that actually ship, which is both offline and more accurate - a manifest
+      # whole job down with it. The image scan in ci.yml reads the jars and
+      # binaries that actually ship, which is both offline and more accurate - a manifest
       # lists what was requested, an image contains what was resolved.
       - name: Scan Dockerfiles, compose and Terraform
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -107,55 +111,3 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
-
-  images:
-    name: image scan (${{ matrix.service }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        service: [fleet-api, telemetry-ingest, vehicle-sim, web-ui]
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build the image
-        run: docker build -t "fleetops/${{ matrix.service }}:scan" "services/${{ matrix.service }}"
-
-      - name: Scan the image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        env:
-          # An end-of-life OS reports zero findings because nobody publishes fixes
-          # for it any more. Fail on that instead of passing on missing data. EL-015.
-          TRIVY_EXIT_ON_EOL: "1"
-        with:
-          scan-type: image
-          image-ref: fleetops/${{ matrix.service }}:scan
-          severity: HIGH,CRITICAL
-          # Base-image CVEs with no fix available would otherwise block every
-          # merge with nothing to do about them. Ones that DO have an upstream
-          # fix we cannot apply ourselves are listed in .trivyignore.yaml with an
-          # expiry date. See docs/SECURITY_POLICY.md.
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
-
-      # The SBOM is generated from the image rather than the source tree, for the
-      # same reason the vuln scan is: this is the bill of materials for the thing
-      # that actually gets deployed, transitive dependencies resolved.
-      - name: Generate an SBOM
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: fleetops/${{ matrix.service }}:scan
-          format: cyclonedx
-          output: sbom-${{ matrix.service }}.cdx.json
-
-      - name: Upload the SBOM
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: sbom-${{ matrix.service }}
-          path: sbom-${{ matrix.service }}.cdx.json
-          retention-days: 30

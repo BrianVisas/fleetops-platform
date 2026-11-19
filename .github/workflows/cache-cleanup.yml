@@ -1,0 +1,38 @@
+name: cache-cleanup
+
+# Deletes a pull request's Actions caches when it is merged or closed. Its
+# caches are scoped to refs/pull/<number>/merge, so nothing reads them again,
+# but they count against the repository's 10 GB until GitHub evicts them a week
+# later. When the repository hit the limit, three quarters of it belonged to
+# merged pull requests, and main's build cache was being evicted instead
+# (EL-027). GitHub's documentation describes this same cleanup.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: delete the pull request's caches
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write         # delete caches
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      REF: refs/pull/${{ github.event.pull_request.number }}/merge
+    steps:
+      - name: Delete the caches
+        run: |
+          ids=$(gh cache list --ref "$REF" --limit 1000 --json id --jq '.[].id')
+          count=0
+          for id in $ids; do
+            gh cache delete "$id" >/dev/null
+            count=$((count + 1))
+          done
+          echo "deleted $count caches of $REF"
+          gh api "repos/$GH_REPO/actions/cache/usage" --jq '"repository cache now: \(.active_caches_count) entries, \(.active_caches_size_in_bytes / 1048576 | floor) MiB"'

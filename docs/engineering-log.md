@@ -41,8 +41,8 @@ Every entry follows the same structure:
 | [EL-023](#el-023-twenty-minutes-of-fonts-and-codecs) | Twenty minutes of fonts and codecs | CI | fixed |
 | [EL-024](#el-024-a-wait-that-never-waited) | A wait that never waited | build | fixed |
 | [EL-025](#el-025-a-time-limit-sized-on-ci) | A time limit sized on CI | build | fixed |
-| [EL-026](#el-026-two-ci-jobs-lost-to-one-refused-download) | Two CI jobs lost to one refused download | CI | fixed |
-| [EL-027](#el-027-the-retry-that-could-not-help) | The retry that could not help | CI | mitigated, #58 |
+| [EL-026](#el-026-two-ci-jobs-lost-to-one-refused-download) | Two CI jobs lost to one refused download | CI | superseded by EL-027 |
+| [EL-027](#el-027-the-retry-that-could-not-help) | The retry that could not help | CI | fixed |
 | [EL-028](#el-028-a-cluster-living-in-swap) | A cluster living in swap | local cluster | fixed |
 | [EL-029](#el-029-a-check-that-only-passed-once) | A check that only passed once | local cluster | fixed |
 
@@ -891,7 +891,11 @@ into a number.
 
 ## EL-026: Two CI jobs lost to one refused download
 
-2026-11-18 · CI · fixed in the pull request that adds this entry
+2026-11-18 · CI · fixed in the pull request that adds this entry; superseded
+
+**Superseded.** The retry loop below never saved a build, and Sonatype advises
+against retrying. It was removed when CI moved to building each image once per
+commit (EL-027, ADR-0009). The entry stays as it was written.
 
 **Symptom.** On #55, `acceptance (cucumber)` and `acceptance (robot)` failed
 after about 35 seconds, while `acceptance (pytest-bdd)` in the same run passed.
@@ -935,7 +939,7 @@ follow-up.
 
 ## EL-027: The retry that could not help
 
-2026-11-18 · CI · mitigated in #57, fixed by #58
+2026-11-18 · CI · mitigated in #57, fixed by ADR-0009 (#58)
 
 **Symptom.** On #57, the first pull request that installs the services on kind
 in CI, `kind cluster` failed in "Install FleetOps" after about 100 seconds,
@@ -999,8 +1003,11 @@ caches are deleted, and the retry loop goes.
 **Verification.** The script, run with stand-in `docker`, `kind`, `helm`,
 `kubectl` and `curl` commands: with `IMAGE_TAG=ci` it loaded the four images
 and built none; without it, it built and loaded three; with a build that
-fails, it printed the build's error line and stopped. In CI, the evidence is
-`image (fleet-api)` in `cluster.yml` showing the Maven step as `CACHED`.
+fails, it printed the build's error line and stopped. On #57's last run, the
+Maven step in `cluster.yml` was still not cached, because no cache had that
+layer yet, and that time the download went through. Making a cache hit the
+normal case, and a miss cost one download instead of eight, is what ADR-0009
+does.
 
 **Lesson.** Three, one per problem. Make output quiet on success, never on
 failure: `--quiet` decided what the person debugging would see. A retry only

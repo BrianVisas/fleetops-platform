@@ -3,73 +3,24 @@ name: cluster
 # Creates the local kind cluster on a runner with the same scripts, versions,
 # charts and manifests as on the Mac (infra/local, deploy/charts), checks that
 # a request reaches Envoy through the port mapping, installs FleetOps into it
-# (database and services, built from this commit), and runs the pytest-bdd
-# acceptance suite against it through the gateway.
+# (the database, and the services from the images ci.yml built for this
+# commit), and runs the pytest-bdd acceptance suite against it through the
+# gateway.
 #
-# The images are built in their own job, in parallel, from the layer cache the
-# release workflow keeps, and handed to the cluster job as artifacts. When the
-# cache misses, fleet-api still downloads Maven and its dependencies from Maven
-# Central, which refuses runners at times (EL-027); #58 builds each image once
-# per pull request for every workflow.
+# Called by ci.yml on every pull request, every push to main and every night
+# (ADR-0009). It used to run only when infra/local or deploy/charts changed;
+# now that the services run on the cluster, a change to a service is a change
+# to what runs there too.
 
 on:
-  pull_request:
-    paths:
-      - "infra/local/**"
-      - "deploy/charts/**"
-      - ".github/workflows/cluster.yml"
-  push:
-    branches: [main]
-    paths:
-      - "infra/local/**"
-      - "deploy/charts/**"
-      - ".github/workflows/cluster.yml"
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
-concurrency:
-  group: cluster-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  images:
-    name: image (${{ matrix.service }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      matrix:
-        service: [fleet-api, telemetry-ingest, web-ui, vehicle-sim]
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      # Reads the cache scope release.yml writes for this service, and does not
-      # write to it: an amd64-only export would replace the multi-arch cache.
-      # The image is saved as a tar file for the cluster job. No provenance or
-      # SBOM: the tar is a test input, never published.
-      - name: Build for amd64
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: services/${{ matrix.service }}
-          platforms: linux/amd64
-          tags: fleetops/${{ matrix.service }}:ci
-          cache-from: type=gha,scope=${{ matrix.service }}
-          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.service }}.tar
-          provenance: false
-          sbom: false
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: image-${{ matrix.service }}
-          path: ${{ runner.temp }}/${{ matrix.service }}.tar
-          retention-days: 1
-
   kind:
     name: kind cluster
-    needs: images
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -102,21 +53,10 @@ jobs:
         timeout-minutes: 10
         run: infra/local/cluster-up.sh
 
-      - name: Download the images
-        uses: actions/download-artifact@v8
-        with:
-          pattern: image-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/images
+      - uses: ./.github/actions/load-images
 
-      - name: Load the images into Docker
-        run: |
-          for image in "$RUNNER_TEMP"/images/*.tar; do
-            docker load --input "$image"
-          done
-
-      # IMAGE_TAG=ci: the images from the job above, loaded into the node
-      # instead of built again.
+      # IMAGE_TAG=ci: the images ci.yml built, loaded into the node instead of
+      # built again.
       - name: Install FleetOps
         timeout-minutes: 15
         env:
