@@ -1,7 +1,7 @@
 # One entry point for the whole repo.
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help build test up down logs sim ps clean fmt cluster-up cluster-deploy cluster-down cluster-status
+.PHONY: help build test up down logs sim ps clean fmt cluster-up cluster-deploy cluster-down cluster-status gitops-bootstrap gitops-status
 
 help:
 	@echo "make build   - build every service image"
@@ -18,6 +18,9 @@ help:
 	@echo "make cluster-deploy - build this checkout and install it into the cluster's dev environment (SIM=1 adds vehicle-sim)"
 	@echo "make cluster-status - show nodes, pods and the gateway"
 	@echo "make cluster-down   - delete the local kind cluster"
+	@echo
+	@echo "make gitops-bootstrap - once per cluster: Argo CD runs everything from deploy/gitops (ADR-0010)"
+	@echo "make gitops-status    - the Argo CD applications, synced and healthy or not"
 
 build:
 	$(COMPOSE) build
@@ -70,3 +73,11 @@ cluster-status:
 
 cluster-down:
 	infra/local/cluster-down.sh
+
+# GitOps (Phase 4 package 4). After this, nothing is installed by hand: Argo CD
+# syncs the cluster with main.
+gitops-bootstrap:
+	infra/local/gitops-bootstrap.sh
+
+gitops-status:
+	kubectl get applications -n argocd

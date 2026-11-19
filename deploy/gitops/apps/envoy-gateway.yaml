@@ -1,0 +1,33 @@
+# Envoy Gateway (ADR-0008), the same release cluster-up.sh installs: chart
+# version from infra/local/versions.env, values from infra/local.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  sources:
+    - repoURL: oci://registry-1.docker.io/envoyproxy/gateway-helm
+      path: .
+      targetRevision: v1.10.0
+      helm:
+        releaseName: eg
+        valueFiles:
+          - $values/infra/local/envoy-gateway-values.yaml
+    - repoURL: git@github.com:BrianVisas/fleetops-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The Gateway API and Envoy Gateway CRDs are too large for client-side apply.
+      - ServerSideApply=true

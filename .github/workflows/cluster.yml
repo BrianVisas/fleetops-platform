@@ -49,6 +49,22 @@ jobs:
             helm lint deploy/charts/fleetops-service --values "$values"
           done
 
+      # What Argo CD renders for every environment and service (deploy/gitops):
+      # the service's values, then the environment's. And the platform's chart
+      # versions in the Argo CD applications must match versions.env.
+      - name: Check the GitOps configuration
+        run: |
+          for file in deploy/gitops/*.yaml deploy/gitops/*/*.yaml deploy/gitops/envs/*/*.yaml; do
+            yq e 'true' "$file" >/dev/null || { echo "not valid YAML: $file"; exit 1; }
+          done
+          for env in deploy/gitops/envs/*/; do
+            for values in deploy/charts/fleetops-service/values-*.yaml; do
+              helm template x deploy/charts/fleetops-service --values "$values" --values "$env/values.yaml" >/dev/null
+            done
+            echo "renders: $(basename "$env")"
+          done
+          deploy/gitops/check-versions.sh
+
       - name: Create the cluster
         timeout-minutes: 10
         run: infra/local/cluster-up.sh

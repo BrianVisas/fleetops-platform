@@ -1,0 +1,48 @@
+# Two Argo CD projects, so that what an application may touch is decided here
+# and not in each application.
+#
+# - platform: the cluster's shared parts, which need cluster-wide resources
+#   (CRDs, webhooks, the GatewayClass). Only from this repository and the three
+#   chart registries the platform comes from.
+# - fleetops: the environments. Only from this repository, only into the
+#   fleetops-* namespaces, and no cluster-wide resources at all, so a FleetOps
+#   chart cannot change anything outside its environment.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: Argo CD, Envoy Gateway, CloudNativePG and the gateway configuration
+  sourceRepos:
+    - git@github.com:BrianVisas/fleetops-platform.git
+    - https://argoproj.github.io/argo-helm
+    - https://cloudnative-pg.github.io/charts
+    - oci://registry-1.docker.io/envoyproxy/gateway-helm
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: fleetops
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: The FleetOps environments
+  sourceRepos:
+    - git@github.com:BrianVisas/fleetops-platform.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: fleetops-*
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

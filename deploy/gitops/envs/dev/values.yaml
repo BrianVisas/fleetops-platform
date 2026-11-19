@@ -1,0 +1,14 @@
+# dev: what every service in fleetops-dev runs, on top of its own values file.
+#
+# The image is the one CI published from a commit on main (ADR-0009). Until
+# package 5 moves this tag after every merge, it changes by pull request.
+image:
+  tag: sha-0123d6f
+
+# The GHCR packages are private; gitops-bootstrap.sh puts this secret, with a
+# read-only token, into the namespace.
+imagePullSecrets:
+  - name: ghcr-pull
+
+route:
+  host: dev.fleetops.localhost

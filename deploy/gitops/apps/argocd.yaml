@@ -1,0 +1,33 @@
+# Argo CD manages its own release: the chart and values gitops-bootstrap.sh
+# installed it with. The version is pinned in infra/local/versions.env too;
+# check-versions.sh fails CI if the two differ.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: platform
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.18.2
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/deploy/gitops/argocd/values.yaml
+    - repoURL: git@github.com:BrianVisas/fleetops-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # Argo CD's CRDs are larger than the annotation a client-side apply keeps.
+      - ServerSideApply=true
