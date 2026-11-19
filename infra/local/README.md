@@ -69,3 +69,7 @@ Routes use one hostname per environment: `dev.fleetops.localhost` and
 `install-fleetops.sh` on a runner whenever `infra/local` or `deploy/charts`
 changes, with the same versions, runs the pytest-bdd acceptance suite against
 the cluster, and prints what the cluster uses.
+
+CI builds the images in a separate job, from the layer cache the release
+workflow keeps, and runs `install-fleetops.sh` with `IMAGE_TAG=ci`, which loads
+those images instead of building them again (EL-027).

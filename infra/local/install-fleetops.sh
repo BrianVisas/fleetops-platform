@@ -52,14 +52,33 @@ services="fleet-api telemetry-ingest web-ui"
 # tag names the commit, and "-dirty" plus the time when files have changed, so
 # every change is a new tag and Kubernetes rolls the pods. `kind load` copies
 # the image into the node: no registry, no download.
-tag="local-$(git rev-parse --short HEAD)"
-[ -z "$(git status --porcelain)" ] || tag="$tag-dirty-$(date +%s)"
-echo "== images $tag"
+#
+# IMAGE_TAG=<tag> skips the build and loads fleetops/<service>:<tag>, which must
+# already be in Docker. CI uses it: its images are built in a separate job, from
+# the build cache, so the cluster job does not download Maven (EL-027).
+if [ -n "${IMAGE_TAG:-}" ]; then
+  tag=$IMAGE_TAG
+  echo "== images $tag, already built"
+else
+  tag="local-$(git rev-parse --short HEAD)"
+  [ -z "$(git status --porcelain)" ] || tag="$tag-dirty-$(date +%s)"
+  echo "== images $tag"
+fi
+build_log=$(mktemp)
 for service in $services; do
-  docker build --quiet --tag "fleetops/$service:$tag" "services/$service" >/dev/null
+  if [ -z "${IMAGE_TAG:-}" ]; then
+    # The build output goes to a file, and its end is printed if the build
+    # fails. `--quiet` printed only the Dockerfile lines, not the error (EL-027).
+    docker build --progress=plain --tag "fleetops/$service:$tag" "services/$service" >"$build_log" 2>&1 || {
+      tail -n 40 "$build_log" >&2
+      echo "building $service failed; the full log is in $build_log" >&2
+      exit 1
+    }
+  fi
   kind load docker-image "fleetops/$service:$tag" --name fleetops >/dev/null
-  echo "built and loaded fleetops/$service:$tag"
+  echo "loaded fleetops/$service:$tag"
 done
+rm -f "$build_log"
 
 # In order: fleet-api runs the migrations that telemetry-ingest needs, and
 # web-ui's nginx looks up fleet-api when it starts.

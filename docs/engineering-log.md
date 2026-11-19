@@ -42,6 +42,7 @@ Every entry follows the same structure:
 | [EL-024](#el-024-a-wait-that-never-waited) | A wait that never waited | build | fixed |
 | [EL-025](#el-025-a-time-limit-sized-on-ci) | A time limit sized on CI | build | fixed |
 | [EL-026](#el-026-two-ci-jobs-lost-to-one-refused-download) | Two CI jobs lost to one refused download | CI | fixed |
+| [EL-027](#el-027-the-retry-that-could-not-help) | The retry that could not help | CI | fixed |
 
 ---
 
@@ -929,3 +930,58 @@ not the diagnosis: this one had happened before and been rerun away. The deeper
 fix is downloading less: building each image once per pull request and sharing
 it between jobs would turn seven downloads into one. That is recorded as a
 follow-up.
+
+## EL-027: The retry that could not help
+
+2026-11-18 · CI · fixed in #57
+
+**Symptom.** On #57, the first pull request that installs the services on kind
+in CI, `kind cluster` failed in "Install FleetOps" after about 100 seconds,
+while building the fleet-api image. The log showed the Dockerfile lines of the
+Maven step and `exit code: 1`, and nothing of what the step itself printed. In
+the same run, `image (fleet-api)` in the release workflow built the same
+Dockerfile without trouble. On the Mac, the same script had installed
+everything a few minutes earlier.
+
+**Root cause.** Two problems, one hiding the other.
+
+- `install-fleetops.sh` built with `docker build --quiet`. On failure BuildKit
+  then prints the failing instruction but not its output, so the actual error
+  was lost. What is certain is the step: the `RUN` that downloads Maven and
+  then all of fleet-api's dependencies. The timing fits all four of EL-026's
+  attempts failing (90 seconds of pauses plus the base image pull), but the
+  log cannot tell that apart from a failed dependency download.
+- Either way, the cluster job went to Maven Central on every run. The release
+  workflow's image builds read their layers from the GitHub Actions cache, so
+  with `pom.xml` unchanged they never download anything. The cluster job used
+  plain `docker build` with no cache: an eighth fleet-api build per pull
+  request, and every one of them from scratch. EL-026's retry spreads four
+  attempts over 90 seconds; a runner Central refuses for longer than that still
+  fails.
+
+**Fix.**
+
+- A new `images` job in `cluster.yml` builds the four images for amd64, in
+  parallel, reading the release workflow's cache for each service
+  (`cache-from: type=gha,scope=<service>`). It does not write to that cache:
+  an amd64-only export would replace the multi-arch one. Each image goes to
+  the cluster job as an artifact, and `install-fleetops.sh` gets
+  `IMAGE_TAG=ci`, which loads the existing images into the node instead of
+  building them.
+- `install-fleetops.sh` builds with `--progress=plain` into a log file and, if
+  a build fails, prints its last 40 lines. On the Mac the build output stays
+  out of the way as before.
+
+**Verification.** The script, run with stand-in `docker`, `kind`, `helm`,
+`kubectl` and `curl` commands: with `IMAGE_TAG=ci` it loaded the four images
+and built none; without it, it built and loaded three; with a build that
+fails, it printed the build's error line and stopped. In CI, `image
+(fleet-api)` in `cluster.yml` reports its Maven step as `CACHED`, and the
+cluster job installs and passes the acceptance suite.
+
+**Lesson.** A quiet flag is a decision about what the person debugging the
+failure will see; make output quiet on success, never on failure. And a retry
+only covers short outages. When a job keeps depending on a service that rate
+limits shared runners, the fix is to stop calling it, here by reusing a cache
+that already existed. The other jobs still build fleet-api from scratch, which
+is the follow-up to build each image once per pull request.
