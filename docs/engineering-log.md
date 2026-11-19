@@ -46,6 +46,7 @@ Every entry follows the same structure:
 | [EL-028](#el-028-a-cluster-living-in-swap) | A cluster living in swap | local cluster | fixed |
 | [EL-029](#el-029-a-check-that-only-passed-once) | A check that only passed once | local cluster | fixed |
 | [EL-030](#el-030-a-cache-that-held-back-security-fixes) | A cache that held back security fixes | CI, security | fixed |
+| [EL-031](#el-031-a-dependency-layer-the-cache-kept-losing) | A dependency layer the cache kept losing | CI | fixed |
 
 ---
 
@@ -1130,12 +1131,84 @@ the difference showed on the first run.
 (the Maven and Go dependencies), still come from the cache, so there is still
 no Maven download.
 
-**Verification.** On #59's next run, web-ui's upgrade step runs instead of
-coming from the cache and installs nginx 1.30.7-r0, all four image scans pass,
-and fleet-api's Maven step is still `CACHED`.
+**Verification.** On #59's next runs, web-ui's upgrade step ran instead of
+coming from the cache and installed nginx 1.30.7-r0, and once pebble was
+removed (`docs/SECURITY_POLICY.md`) all four image scans passed. This entry
+first also said that fleet-api's Maven step stays `CACHED`. It did not, on
+either run: see EL-031.
 
 **Lesson.** Cache what is pinned, and rebuild what is meant to change. A layer
 whose job is to fetch today's fixes cannot be cached, because nothing in its
 cache key knows that the world moved on. And a passing scan only means
 something when the scanned image is the one that ships: scanning the published
 images is still on the deferred list.
+
+## EL-031: A dependency layer the cache kept losing
+
+2026-11-19 · CI · fixed in the pull request that adds this entry
+
+**Symptom.** The first run of `ci.yml` on `main`, right after #59 merged,
+failed in `image (fleet-api)`, and nothing was published:
+
+```
+#15 0.145 wget: Failed to fetch https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.10.0/apache-maven-3.10.0-bin.tar.gz
+```
+
+The step that downloads Maven and fleet-api's dependencies had not come from
+the layer cache, so the build went to Maven Central, which refused the runner.
+It was the third run in a row with that step not cached. On #59's last run it
+missed in the `images` job and missed again in the release build five minutes
+later, in the same workflow run, after the `images` job had written its layers
+to the cache.
+
+**Root cause.** Not established; what is established is that the design
+depended on it. The pattern on #59:
+
+| Runs | `no-cache-filters` | fleet-api's Maven step |
+|------|--------------------|------------------------|
+| 12:57, 13:06 | no | `CACHED` |
+| 13:39, 13:57 | `runtime` | run, downloading from Maven Central |
+
+The base image digest was the same in all four. In the same runs, the Go
+images' build stages did come from the cache in the release build. A local
+test reproduced the build's shape with a stand-in base image, exported the
+cache with and without `--no-cache-filter runtime`, emptied the builder and
+imported it again: the `RUN` step was `CACHED` both times. So the filter alone
+does not explain it, and the difference is in how the GitHub Actions cache
+holds this one large layer. ADR-0009 had made fleet-api's builds safe from
+Maven Central only as long as that layer was found. When it was not, every
+build downloaded again, and a refusal failed `main`.
+
+**Fix.** fleet-api's image build no longer needs the network for Maven.
+
+- A composite action, `.github/actions/maven-home`, restores `~/.m2` on the
+  runner from the Actions cache: the Maven distribution the wrapper uses and
+  the dependencies, keyed on the pom and the wrapper's version, with the
+  newest older cache as fallback. It then runs the same goals as the image
+  build, which download only what the cache lacks.
+- The Dockerfile has an empty stage, `maven-home`, which it copies to
+  `/root/.m2`. CI passes the runner's `~/.m2` as a build context of that name,
+  which replaces the stage, and sets `MAVEN_ARGS=--offline`. The wrapper then
+  finds Maven, Maven finds every dependency, and a dependency that is missing
+  fails the build by name instead of being fetched.
+- On the Mac nothing changes: the stage is empty, `MAVEN_ARGS` is empty, and
+  Maven downloads as before.
+
+Maven Central is now contacted by the runner when the pom or the wrapper's
+Maven version changes, from a cache that GitHub keys on those files, not on
+every layer cache miss. That is what Sonatype asks for: cache artifacts, and
+stop downloading from clean environments.
+
+**Verification.** Locally, with the stand-in base image: without the context
+the stage is empty and the build runs as it always did; with it,
+`/root/.m2` holds the context's files and `MAVEN_ARGS` reaches the `RUN` step
+as `--offline`. In CI, the evidence is fleet-api's Maven step running offline,
+`[INFO]` lines and no `wget`, in both the `images` job and the release build,
+including on a run where the layer cache misses.
+
+**Lesson.** A cache makes a working build faster; it must not be what makes
+the build work. When a build only succeeds on a cache hit, every miss is an
+outage, and misses happen for reasons you will not always find. Give the build
+what it needs in a way that does not depend on a hit, and let the cache only
+save time. And a verification line written before the result is a prediction:
+EL-030 said the Maven step stayed cached, and it had to be corrected here.

@@ -121,11 +121,12 @@ updates:
 
   # Third-party actions are pinned to commit SHAs with the version in a comment;
   # Dependabot updates both. See EL-016. With `/` it reads .github/workflows;
-  # the composite action the CI jobs share (ADR-0009) needs its own directory.
+  # the composite actions the CI jobs share (ADR-0009) need their own directories.
   - package-ecosystem: github-actions
     directories:
       - /
       - /.github/actions/load-images
+      - /.github/actions/maven-home
     schedule:
       interval: weekly
       day: monday

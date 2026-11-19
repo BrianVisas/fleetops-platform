@@ -1,3 +1,12 @@
+# ---- Maven home ----
+# Empty, so a plain `docker build` (make up, make cluster-deploy) works as it
+# always did: the wrapper downloads Maven and Maven downloads the dependencies.
+# CI passes a build context of the same name, which replaces this stage: the
+# runner's ~/.m2, restored from the Actions cache, with Maven itself and every
+# dependency the build needs. The image build then runs Maven offline and
+# contacts Maven Central for nothing (EL-031).
+FROM scratch AS maven-home
+
 # ---- build ----
 # A jar is the same on every architecture, so the build stage runs once, on the
 # build machine's own architecture ($BUILDPLATFORM), even for an arm64 image.
@@ -11,6 +20,12 @@
 FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
 WORKDIR /build
 
+# Maven reads extra arguments from MAVEN_ARGS. CI sets it to --offline, so a
+# dependency missing from the Maven home above fails the build with its name
+# instead of being fetched from Maven Central. Empty by default.
+ARG MAVEN_ARGS=""
+COPY --from=maven-home / /root/.m2/
+
 # Wrapper and descriptor first, so the Maven download and dependency resolution
 # are cached separately from the source: editing a Java file then does not
 # re-download the world. `-v` prints the Maven version into the build log, which
@@ -20,8 +35,8 @@ WORKDIR /build
 #
 # Maven Central refuses downloads from CI runners at times, and retrying does
 # not help: Sonatype's advice is not to retry harder, and a four-attempt loop
-# here (EL-026) never saved a build. CI builds this image once per commit, from
-# its layer cache, instead (ADR-0009, EL-027).
+# here (EL-026) never saved a build. CI gives this build its dependencies
+# instead, through the maven-home context (EL-031).
 COPY mvnw pom.xml ./
 COPY .mvn .mvn
 RUN ./mvnw -B -v && ./mvnw -B -ntp dependency:go-offline
