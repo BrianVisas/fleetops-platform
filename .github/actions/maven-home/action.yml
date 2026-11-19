@@ -1,0 +1,45 @@
+name: Maven home for the fleet-api image
+description: >-
+  Restores ~/.m2 for fleet-api from the Actions cache (the Maven distribution
+  the wrapper uses and the dependencies), adds whatever the build needs and the
+  cache does not have yet, and outputs its path for the image build's
+  maven-home context (EL-031).
+
+outputs:
+  path:
+    description: The directory to pass as the maven-home build context.
+    value: ${{ steps.path.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    # A JDK for the wrapper. setup-java writes a settings.xml for publishing;
+    # it goes to the temp directory, not into ~/.m2, which the image build reads.
+    - uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: "21"
+        settings-path: ${{ runner.temp }}
+
+    # The key changes with the pom and the wrapper's Maven version. When it does,
+    # the newest earlier cache is restored and only what changed is downloaded:
+    # Maven Central is contacted when a dependency changes, not on every build.
+    - name: Restore fleet-api's Maven home
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.m2/repository
+          ~/.m2/wrapper
+        key: fleet-api-maven-home-${{ hashFiles('services/fleet-api/pom.xml', 'services/fleet-api/.mvn/wrapper/maven-wrapper.properties') }}
+        restore-keys: fleet-api-maven-home-
+
+    # The same goals the image build runs. With a complete cache this downloads
+    # nothing; after a pom change it downloads the difference, once.
+    - name: Resolve what the image build needs
+      shell: bash
+      working-directory: services/fleet-api
+      run: ./mvnw -B -ntp dependency:go-offline package -DskipTests
+
+    - id: path
+      shell: bash
+      run: echo "path=$HOME/.m2" >> "$GITHUB_OUTPUT"

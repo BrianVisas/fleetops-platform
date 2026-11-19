@@ -73,9 +73,11 @@ scan, govulncheck); the image scan moved to `ci.yml`, next to the images.
 
 ## Consequences
 
-- Maven Central is contacted once per commit for fleet-api, by the `images`
-  job, and only when the cache does not have the layers; before, up to eight
-  times. The release build downloads nothing.
+- fleet-api's image builds contact Maven Central for nothing: they run Maven
+  offline, with Maven and the dependencies from the runner's Actions cache
+  (EL-031). The runner fills that cache from Central when the pom or the
+  wrapper's Maven version changes. Before, up to eight builds per pull request
+  downloaded everything.
 - The scanned, tested and installed image is one build. The published images
   share its build stages, so they carry the same application, but their runtime
   stage is rebuilt minutes later and fetches the OS packages again. Publishing

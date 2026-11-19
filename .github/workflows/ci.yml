@@ -50,6 +50,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # fleet-api only: Maven and the dependencies come from the Actions cache
+      # on the runner, and the image build gets them as its maven-home context
+      # and runs Maven offline. On a layer cache miss, the image build then
+      # still downloads nothing (EL-031).
+      - name: Maven home for fleet-api
+        id: maven-home
+        if: matrix.service == 'fleet-api'
+        uses: ./.github/actions/maven-home
+
       # amd64, the runners' architecture, saved as a tar file for the jobs
       # below. The layer cache has one scope per service, and GitHub keeps it
       # per branch: a pull request reads main's and its own and writes its own,
@@ -59,14 +68,17 @@ jobs:
       # The runtime stage is rebuilt every time: it upgrades the OS packages,
       # and a cached upgrade is as old as the cache. The scan caught a cached
       # web-ui layer with nginx 1.30.6 when 1.30.7 had the fixes (EL-030).
-      # The nightly run builds without any cache, which proves every day that
-      # the images still build from nothing, and refreshes main's cache.
+      # The nightly run builds without the layer cache, which proves every day
+      # that the images still build from their inputs, and refreshes main's
+      # cache.
       - name: Build for amd64
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: services/${{ matrix.service }}
           platforms: linux/amd64
           tags: fleetops/${{ matrix.service }}:ci
+          build-contexts: ${{ steps.maven-home.outputs.path && format('maven-home={0}', steps.maven-home.outputs.path) || '' }}
+          build-args: ${{ steps.maven-home.outputs.path && 'MAVEN_ARGS=--offline' || '' }}
           no-cache: ${{ github.event_name == 'schedule' }}
           no-cache-filters: runtime
           cache-from: type=gha,scope=${{ matrix.service }}

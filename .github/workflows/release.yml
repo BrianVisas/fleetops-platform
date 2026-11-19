@@ -69,6 +69,13 @@ jobs:
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # As in ci.yml: fleet-api's image build gets Maven and its dependencies
+      # from the runner's Actions cache and runs Maven offline (EL-031).
+      - name: Maven home for fleet-api
+        id: maven-home
+        if: matrix.service == 'fleet-api'
+        uses: ./.github/actions/maven-home
+
       # Registry paths must be lower case, and the owner is "BrianVisas".
       - name: Image name
         id: name
@@ -103,9 +110,12 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-contexts: ${{ steps.maven-home.outputs.path && format('maven-home={0}', steps.maven-home.outputs.path) || '' }}
+          build-args: ${{ steps.maven-home.outputs.path && 'MAVEN_ARGS=--offline' || '' }}
           # The build stages (Maven, Go) come from the cache the images job in
-          # ci.yml wrote earlier in this workflow run, so this build downloads
-          # no dependencies. The runtime stages, amd64 and arm64, are rebuilt
+          # ci.yml wrote earlier in this workflow run when it has them, and
+          # fleet-api's runs offline from the maven-home context when it does
+          # not. The runtime stages, amd64 and arm64, are rebuilt
           # with today's OS package fixes, as in ci.yml (EL-030). Nothing is
           # written back: the only layers this build adds are rebuilt anyway.
           cache-from: type=gha,scope=${{ matrix.service }}
