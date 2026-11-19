@@ -1,7 +1,11 @@
 # The dashboard is static files, so there is no build stage: nginx from Alpine's
 # own packages, on the same Alpine release as the Go services. That keeps one
 # base OS to patch and scan instead of adding a second one through an nginx image.
-FROM alpine:3.24
+#
+# Named "runtime" so that CI can rebuild this stage on every run while the
+# build stage above comes from the cache: an upgrade taken from a cached layer
+# is as old as the cache, and the scan found that layer missing fixes (EL-030).
+FROM alpine:3.24 AS runtime
 
 # Upgrade first for the same reason as the other images: the tag lags Alpine's
 # package fixes. See docs/SECURITY_POLICY.md.

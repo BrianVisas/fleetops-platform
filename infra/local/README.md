@@ -78,10 +78,10 @@ Routes use one hostname per environment: `dev.fleetops.localhost` and
 ## CI
 
 `.github/workflows/cluster.yml` lints the charts, then runs `cluster-up.sh` and
-`install-fleetops.sh` on a runner whenever `infra/local` or `deploy/charts`
-changes, with the same versions, runs the pytest-bdd acceptance suite against
-the cluster, and prints what the cluster uses.
+`install-fleetops.sh` on a runner, with the same versions, runs the pytest-bdd
+acceptance suite against the cluster, and prints what the cluster uses.
 
-CI builds the images in a separate job, from the layer cache the release
-workflow keeps, and runs `install-fleetops.sh` with `IMAGE_TAG=ci`, which loads
-those images instead of building them again (EL-027).
+`ci.yml` calls it on every pull request, every push to `main` and every night.
+It builds each image once per commit (ADR-0009), and `install-fleetops.sh` runs
+with `IMAGE_TAG=ci`, which loads those images into the node instead of
+building them again.

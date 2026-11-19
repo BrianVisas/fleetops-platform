@@ -37,6 +37,15 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # setup-java caches ~/.m2/repository, not the Maven distribution the
+      # wrapper downloads into ~/.m2/wrapper, so without this every run fetches
+      # Maven itself from Maven Central (EL-027).
+      - name: Cache the Maven wrapper's download
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ hashFiles('services/fleet-api/.mvn/wrapper/maven-wrapper.properties') }}
+
       # verify runs surefire (*Test), then failsafe (*IT, Testcontainers), then
       # the JaCoCo coverage check. The runner has a Docker daemon already.
       - name: Unit tests, integration tests and coverage gate

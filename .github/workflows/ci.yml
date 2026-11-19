@@ -1,0 +1,173 @@
+name: ci
+
+# The pipeline for every pull request, every push to main and every night
+# (ADR-0009). Each service image is built once, in the images job, and every
+# job that needs it uses that build: the image scan, the acceptance and browser
+# suites on Compose, and the install on kind. The release build reuses the same
+# layers and runs only after all of them passed, so what main publishes is what
+# was tested.
+#
+# Before this, one pull request built fleet-api from scratch in up to eight
+# jobs, each downloading Maven and its dependencies from Maven Central, which
+# refuses GitHub's runners at times (EL-026, EL-027).
+#
+#   images ──┬── scan (4) ──────┐
+#            ├── acceptance ────┤
+#            ├── e2e ───────────┼── release (multi-arch; publishes on main)
+#            └── cluster ───────┘
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Base images and vulnerability databases change without a commit, and the
+  # nightly run finds that before the next pull request does. 03:23 UTC, off
+  # the hour: GitHub delays schedules that start at :00.
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A superseded pull request run can be cancelled; a publish from main must
+  # never be stopped half-way through.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  images:
+    name: image (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [fleet-api, telemetry-ingest, web-ui, vehicle-sim]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # amd64, the runners' architecture, saved as a tar file for the jobs
+      # below. The layer cache has one scope per service, and GitHub keeps it
+      # per branch: a pull request reads main's and its own and writes its own,
+      # which cache-cleanup.yml deletes when the pull request closes.
+      #
+      # The cache holds the build stages (Maven, Go), whose inputs are pinned.
+      # The runtime stage is rebuilt every time: it upgrades the OS packages,
+      # and a cached upgrade is as old as the cache. The scan caught a cached
+      # web-ui layer with nginx 1.30.6 when 1.30.7 had the fixes (EL-030).
+      # The nightly run builds without any cache, which proves every day that
+      # the images still build from nothing, and refreshes main's cache.
+      - name: Build for amd64
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/${{ matrix.service }}
+          platforms: linux/amd64
+          tags: fleetops/${{ matrix.service }}:ci
+          no-cache: ${{ github.event_name == 'schedule' }}
+          no-cache-filters: runtime
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.service }}.tar
+          # A test input, never published: release.yml attaches provenance and
+          # an SBOM to the images it pushes.
+          provenance: false
+          sbom: false
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/${{ matrix.service }}.tar
+          retention-days: 1
+
+  scan:
+    name: image scan (${{ matrix.service }})
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [fleet-api, telemetry-ingest, vehicle-sim, web-ui]
+    env:
+      # Exceptions live in one reviewable file with expiry dates.
+      # See docs/SECURITY_POLICY.md.
+      TRIVY_IGNOREFILE: .trivyignore.yaml
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/load-images
+        with:
+          pattern: image-${{ matrix.service }}
+
+      - name: Scan the image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # An end-of-life OS reports zero findings because nobody publishes fixes
+          # for it any more. Fail on that instead of passing on missing data. EL-015.
+          TRIVY_EXIT_ON_EOL: "1"
+        with:
+          scan-type: image
+          image-ref: fleetops/${{ matrix.service }}:ci
+          severity: HIGH,CRITICAL
+          # Base-image CVEs with no fix available would otherwise block every
+          # merge with nothing to do about them. Ones that DO have an upstream
+          # fix we cannot apply ourselves are listed in .trivyignore.yaml with an
+          # expiry date. See docs/SECURITY_POLICY.md.
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      # The SBOM is generated from the image rather than the source tree, for the
+      # same reason the vuln scan is: this is the bill of materials for the thing
+      # that actually gets deployed, transitive dependencies resolved.
+      - name: Generate an SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: fleetops/${{ matrix.service }}:ci
+          format: cyclonedx
+          output: sbom-${{ matrix.service }}.cdx.json
+
+      - name: Upload the SBOM
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cdx.json
+          retention-days: 30
+
+  acceptance:
+    name: acceptance
+    needs: images
+    permissions:
+      contents: read
+      issues: read        # the traceability check reads the customer issues
+    uses: ./.github/workflows/acceptance.yml
+
+  e2e:
+    name: e2e
+    needs: images
+    uses: ./.github/workflows/e2e.yml
+
+  cluster:
+    name: cluster
+    needs: images
+    uses: ./.github/workflows/cluster.yml
+
+  # Multi-arch build on every pull request, so a Dockerfile that only breaks on
+  # arm64 fails there; on main it also publishes. Not at night: nothing new to
+  # publish, and release-please only acts on pushes.
+  release:
+    name: release
+    needs: [images, scan, acceptance, e2e, cluster]
+    if: github.event_name != 'schedule'
+    permissions:
+      contents: write        # release-please: the tag, the release, CHANGELOG commits
+      pull-requests: write   # release-please: the release pull request
+      packages: write        # push to ghcr.io with GITHUB_TOKEN
+    uses: ./.github/workflows/release.yml

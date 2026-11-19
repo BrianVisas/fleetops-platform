@@ -17,7 +17,10 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w" -o /vehicle-sim .
 
 # ---- run ----
-FROM alpine:3.24
+# Named "runtime" so that CI can rebuild this stage on every run while the
+# build stage above comes from the cache: an upgrade taken from a cached layer
+# is as old as the cache, and the scan found that layer missing fixes (EL-030).
+FROM alpine:3.24 AS runtime
 
 # Alpine publishes package fixes to the release branch faster than it rebuilds
 # the image tag, so the tag alone leaves patched packages on the table

@@ -18,25 +18,22 @@ WORKDIR /build
 # curl or wget if the image has them and falls back to Java otherwise, so the
 # JDK image needs nothing extra installed.
 #
-# The wrapper's own download of Maven has no retry, and Maven Central sometimes
-# refuses a request from a CI runner outright. That failed whole CI jobs in 0.2
-# seconds (EL-026), so the download is tried up to four times, with a growing
-# pause. Maven retries its dependency downloads by itself.
+# Maven Central refuses downloads from CI runners at times, and retrying does
+# not help: Sonatype's advice is not to retry harder, and a four-attempt loop
+# here (EL-026) never saved a build. CI builds this image once per commit, from
+# its layer cache, instead (ADR-0009, EL-027).
 COPY mvnw pom.xml ./
 COPY .mvn .mvn
-RUN for attempt in 1 2 3 4; do \
-      ./mvnw -B -v && break; \
-      [ "$attempt" -lt 4 ] || exit 1; \
-      echo "Maven download failed (attempt $attempt of 4), retrying in $((attempt * 15)) s"; \
-      sleep $((attempt * 15)); \
-    done \
- && ./mvnw -B -ntp dependency:go-offline
+RUN ./mvnw -B -v && ./mvnw -B -ntp dependency:go-offline
 
 COPY src ./src
 RUN ./mvnw -B -ntp -DskipTests package
 
 # ---- run ----
-FROM eclipse-temurin:21-jre
+# Named "runtime" so that CI can rebuild this stage on every run while the
+# build stage above comes from the cache: an upgrade taken from a cached layer
+# is as old as the cache, and the scan found that layer missing fixes (EL-030).
+FROM eclipse-temurin:21-jre AS runtime
 WORKDIR /app
 
 # curl is only here so compose can health-check the container. In Kubernetes the
@@ -49,6 +46,14 @@ RUN apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
+
+# pebble is Canonical's service manager. It comes with the base image and is
+# never run here: the entrypoint is java. It is a Go binary that Canonical
+# compiles, so each Go standard library CVE fails our scan until Canonical
+# rebuilds it; that happened in October and again in November
+# (CVE-2026-97054). Deleting it removes the finding, and the next one, instead
+# of an exception for each. See docs/SECURITY_POLICY.md.
+RUN rm -f /usr/bin/pebble
 
 # Run as a normal user: nothing in this service needs root, and Phase 8 enforces
 # non-root containers with a Kyverno policy.

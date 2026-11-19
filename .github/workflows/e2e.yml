@@ -1,28 +1,20 @@
 name: e2e
 
-# Browser tests of the dashboard against the whole stack, built from this commit
-# and started with Compose. The same tests run in Playwright for TypeScript and
-# for Java (ADR-0007), each in Chromium, Firefox and WebKit.
+# Browser tests of the dashboard against the whole stack, started with Compose
+# from the images ci.yml built for this commit. The same tests run in Playwright
+# for TypeScript and for Java (ADR-0007), each in Chromium, Firefox and WebKit.
 # The traceability check in acceptance.yml counts them towards their issues.
 # See tests/e2e/README.md.
 #
-# No path filter, for the same reason as acceptance.yml: the result is about the
-# system, and a workflow that always reports can later become a required check.
+# Called by ci.yml on every pull request, every push to main and every night
+# (ADR-0009). No path filter, for the same reason as acceptance.yml: the result
+# is about the system, and a check that always reports can later be required.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
-  schedule:
-    - cron: "43 3 * * *"
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   suite:
@@ -35,13 +27,18 @@ jobs:
         suite: [playwright-ts, playwright-java]
     env:
       COMPOSE: docker compose -f deploy/compose/docker-compose.yml
+      # The compose file names its images fleetops/<service>:${FLEETOPS_TAG}.
+      FLEETOPS_TAG: ci
       WEB_UI_URL: http://localhost:3000
       SUITE: ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@v7
 
+      - uses: ./.github/actions/load-images
+
+      # --no-build: the stack runs the images ci.yml built, nothing is built here.
       - name: Start the stack
-        run: $COMPOSE up --detach --build --wait --wait-timeout 300
+        run: $COMPOSE up --detach --no-build --wait --wait-timeout 300
 
       # Each suite runs in Playwright's own image for the Playwright version it
       # is locked to. The browsers and every system library they need are baked

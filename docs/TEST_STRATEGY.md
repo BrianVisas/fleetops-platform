@@ -17,7 +17,7 @@ are few, slow and close to what the customer does:
 | Integration tests | `services/fleet-api` (`*IT`), `services/telemetry-ingest` (`-tags=integration`) | Testcontainers, testcontainers-go | a real Postgres 17 with the real Flyway migrations | SQL, mappings, migrations and constraints behave as the code assumes |
 | Acceptance tests | `tests/acceptance` | Cucumber + REST Assured, pytest-bdd, Robot Framework (ADR-0006) | the whole stack over HTTP, started with Compose | every acceptance criterion of every customer issue |
 | End-to-end tests | `tests/e2e` | Playwright for TypeScript and for Java (ADR-0007), in Chromium, Firefox and WebKit | the whole stack through a browser | an operator can do the same through the dashboard |
-| Security checks | `.github/workflows/security.yml` | gitleaks, Trivy, govulncheck | history, config files and the built images | no secrets, no fixable HIGH or CRITICAL vulnerability, no misconfiguration (`docs/SECURITY_POLICY.md`) |
+| Security checks | `.github/workflows/security.yml`, the image scan in `ci.yml` | gitleaks, Trivy, govulncheck | history, config files and the built images | no secrets, no fixable HIGH or CRITICAL vulnerability, no misconfiguration (`docs/SECURITY_POLICY.md`) |
 
 The rule for choosing a layer: test a behaviour at the lowest layer that can
 see it. A rounding rule for rollout targets is a unit test. That Postgres
@@ -35,9 +35,9 @@ customer sees, so the same suites can later run against the kind cluster
 
 | Trigger | What runs | Why |
 |---------|-----------|-----|
-| Pull request | `fleet-api.yml` and `go-services.yml` when their service changed; `acceptance.yml`, `e2e.yml`, `security.yml` and the image builds in `release.yml` always | the fast layers only where code changed; the system-level checks on every change, because a result about the system does not depend on which files moved |
-| Push to `main` | the same, then the images are published to GHCR as `:main` and `:sha-<commit>` (ADR-0005) | what ships is what was tested, tagged with the commit |
-| Nightly, UTC | acceptance at 03:23, e2e at 03:43, security at 04:17 | base images and vulnerability databases change without a commit; a nightly run finds that before the next pull request does |
+| Pull request | `fleet-api.yml` and `go-services.yml` when their service changed; `ci.yml` and `security.yml` always. `ci.yml` builds each image once, then scans it, runs the acceptance and browser suites on Compose and installs it on kind, all with that one build, and last builds the multi-arch images (ADR-0009) | the fast layers only where code changed; the system-level checks on every change, because a result about the system does not depend on which files moved |
+| Push to `main` | the same; once everything in `ci.yml` passed, the images are published to GHCR as `:main` and `:sha-<commit>` (ADR-0005) | what ships is the build that was tested, tagged with the commit, and nothing ships after a red check |
+| Nightly, UTC | `ci.yml` at 03:23, built without the cache; `security.yml` at 04:17 | base images and vulnerability databases change without a commit; a nightly run finds that before the next pull request does |
 | Release | merging the release-please pull request tags the version and publishes the images as `:<version>` | a release is a commit that already passed everything above on `main` |
 
 The nightly times are off the hour on purpose: GitHub delays schedules that
