@@ -47,6 +47,14 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
+# pebble is Canonical's service manager. It comes with the base image and is
+# never run here: the entrypoint is java. It is a Go binary that Canonical
+# compiles, so each Go standard library CVE fails our scan until Canonical
+# rebuilds it; that happened in October and again in November
+# (CVE-2026-97054). Deleting it removes the finding, and the next one, instead
+# of an exception for each. See docs/SECURITY_POLICY.md.
+RUN rm -f /usr/bin/pebble
+
 # Run as a normal user: nothing in this service needs root, and Phase 8 enforces
 # non-root containers with a Kyverno policy.
 RUN useradd --system --uid 10001 --create-home fleetops

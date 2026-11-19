@@ -86,6 +86,12 @@ finding reappears and the decision has to be made again.
 The removal is the process working as intended: the expiry date existed to force
 a second look, and the second look found the exception no longer necessary.
 
+When pebble had the next finding, CVE-2026-97054 on 2026-11-19, it did not get
+a second exception. The test below says a finding someone here can make go away
+gets fixed, and this one could: nothing in the container runs pebble, so the
+fleet-api image now deletes `/usr/bin/pebble`. That also covers the CVEs it
+would have had next.
+
 An exception is for a finding that is **real and not ours to fix**. It is not for
 a finding that is inconvenient. The test: can someone in this repository make the
 finding go away? If yes, it gets fixed, not ignored.
@@ -115,6 +121,14 @@ Second run, 2026-11-06, after the fixes above and a rebase onto the current
 | `apt` / `libapt-pkg7.0`, CVE-2026-109518, in the fleet-api base image | base image lagging its own package repo | `apt-get upgrade -y` in the runtime stage |
 | Go images: 0 findings on Alpine 3.21.10, "no longer supported by the distribution" | an empty result, not a clean one | moved to Alpine 3.24; `--exit-on-eol 1` so this fails in future |
 | `usr/bin/pebble` exception matching nothing | exception no longer needed | removed, then re-scanned without it |
+
+Third finding, 2026-11-19, on the first runs that scan the image CI tests
+instead of a separate build (ADR-0009).
+
+| Finding | Category | Action |
+|---------|----------|--------|
+| nginx 1.30.6-r0 in web-ui, CVE-2026-121810 and others, fixed in 1.30.7-r0 | our build, stale layer | the package upgrade came from a cached layer; the runtime stages are now rebuilt on every run (EL-030) |
+| `usr/bin/pebble`: Go stdlib 1.27.3, CVE-2026-97054, fixed in Go 1.27.4 | upstream base image, but removable here | `rm -f /usr/bin/pebble` in the fleet-api runtime stage, since nothing runs it |
 
 The lesson in column two: "a CVE appeared" is never one problem. The useful
 question is who can act - us, our dependency, or our base image supplier - and the
