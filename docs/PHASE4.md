@@ -32,11 +32,12 @@ ADR, the way Phase 3 handled its tool choices.
   Image Updater watches GHCR and writes it back. Both keep git as the record of
   what runs. The first keeps all moving parts in one workflow; the second is
   the pull model Argo CD is built around. Decided by trying both in package 5.
-- **Where `staging` runs until Phase 6 (ADR-0010, package 4): decided.** As a
-  second namespace on the kind cluster, so promotion by pull request can be
-  practised now. The roadmap puts `staging` on AKS and `prod` on STACKIT, and
-  neither exists before Phase 6; `prod` gets its values and its application
-  then.
+- **Where `staging` runs until Phase 6 (ADR-0010, package 4): decided, on
+  measurement.** Not on the laptop. The plan was a second namespace on the kind
+  cluster, and measured on the Mac it did not fit next to `dev` and Argo CD
+  (EL-033). `staging` has its values file in `deploy/gitops/envs/staging`, so a
+  promotion pull request changes what `staging` should run from package 5 on;
+  it runs from Phase 6 on AKS, as the roadmap has it, and `prod` on STACKIT.
 
 ## How the local cluster fits together
 
@@ -48,7 +49,7 @@ main ──► release.yml ──► GHCR images    │  argocd        polls the
    └──► CI bumps dev tag      │ pull    │  cnpg-system   the Postgres operator
         in deploy/gitops/dev ─┼─────────┤  fleetops-dev      web-ui, fleet-api, telemetry-ingest,
                               │         │                    vehicle-sim, Postgres, smoke Job
-                              └─────────┤  fleetops-staging  the same, promoted by pull request
+                              └─────────┘  (staging: deploy/gitops/envs/staging, runs from Phase 6)
 ```
 
 Argo CD pulls from GitHub, so nothing on GitHub needs to reach the laptop:
@@ -74,7 +75,7 @@ polling interval (three minutes by default) between a merge and the sync.
   what it adds (`docker stats` in `cluster.yml`). Measured in package 3: the
   node uses 1.4 GiB with the database alone, and 2.4 GiB with the database and
   three services, of the VM's 4.8 GiB. Whether `staging` fits beside `dev` is
-  decided on those numbers.
+  decided on those numbers: with Argo CD it did not (EL-033).
 - **Same tests, new target.** The acceptance suites run unchanged against the
   cluster: they already take their URLs from `FLEET_API_URL` and
   `TELEMETRY_URL`, and they import no service code.
@@ -86,7 +87,7 @@ polling interval (three minutes by default) between a merge and the sync.
 - [ ] Merging a change to `main` results in the new version running in `dev`,
       with the post-sync smoke test green and no manual `kubectl`
 - [ ] Promotion to `staging` is a pull request, and reverting it rolls
-      `staging` back
+      `staging` back (in git from package 5; running from Phase 6, EL-033)
 - [ ] Every chart passes `helm lint` and the Trivy config scan, and installs
       on kind in CI with the acceptance suites passing against it
 - [ ] No secret in git: repository access, registry access and database

@@ -13,7 +13,7 @@ checkout (`make cluster-deploy`), or run by Argo CD from git after a one-time
 | `envoy-gateway-values.yaml`, `cnpg-values.yaml` | values for the Envoy Gateway and CloudNativePG Helm charts, used by `cluster-up.sh` and by Argo CD |
 | `gateway.yaml` | the `EnvoyProxy` settings for kind, the `GatewayClass` and the `fleetops` `Gateway` |
 | `cluster-up.sh`, `cluster-down.sh` | create and delete the cluster |
-| `namespaces.yaml` | `fleetops-dev`, `fleetops-staging` and `argocd`, labelled for the gateway; the FleetOps ones enforce the restricted pod security profile |
+| `namespaces.yaml` | `fleetops-dev` and `argocd`, labelled for the gateway; `fleetops-dev` enforces the restricted pod security profile |
 | `install-fleetops.sh` | builds this checkout's images, loads them into the node and installs FleetOps into `fleetops-dev` with Helm, on a cluster without Argo CD |
 | `gitops-bootstrap.sh` | once per cluster: installs Argo CD, creates its credentials in the cluster, and hands the cluster to `deploy/gitops` |
 | `.cache/` | downloads, such as the chart archives, checked against `versions.env`; not in git |
@@ -83,19 +83,21 @@ cluster and never in git:
 - **a GHCR token** for the cluster to pull the private images. GHCR has no
   fine-grained tokens, so it is a classic one; create it with only
   `read:packages` at
-  https://github.com/settings/tokens/new?scopes=read:packages&description=fleetops-ghcr-pull
-  and save it:
+  https://github.com/settings/tokens/new?scopes=read:packages&description=fleetops-ghcr-pull,
+  copy it, and paste it at the hidden prompt of:
 
   ```bash
   mkdir -p ~/.config/fleetops
-  (umask 077; pbpaste > ~/.config/fleetops/ghcr-read-token)
+  (umask 077; printf 'GHCR token: '; read -rs t; printf '%s' "$t" > ~/.config/fleetops/ghcr-read-token; echo)
   ```
 
-  The bootstrap refuses a token with any other scope.
+  Not `pbpaste`: copying these commands to run them puts the commands on the
+  clipboard, and they end up in the file instead of the token (EL-032). The
+  bootstrap refuses a file that is not one classic token, and a token with any
+  scope other than `read:packages`.
 
-It ends with every application synced and healthy, and the dashboards
-answering on http://dev.fleetops.localhost:8000 and
-http://staging.fleetops.localhost:8000. Argo CD's UI is on
+It ends with every application synced and healthy, and the dashboard
+answering on http://dev.fleetops.localhost:8000. Argo CD's UI is on
 http://argocd.fleetops.localhost:8000. From then on, a change to the cluster
 is a pull request to `deploy/gitops` (see its README), and
 `make cluster-deploy` refuses to run.
@@ -108,9 +110,10 @@ is a pull request to `deploy/gitops` (see its README), and
 | Envoy service (NodePort) | 30080 |
 | The Mac | `127.0.0.1:8000` |
 
-Routes use one hostname per environment: `dev.fleetops.localhost` and
-`staging.fleetops.localhost`. Browsers and curl resolve `*.localhost` to
-`127.0.0.1` by themselves.
+Routes use one hostname per environment, `dev.fleetops.localhost` here, and
+`argocd.fleetops.localhost` for Argo CD. `staging` is not on the laptop: next to
+`dev` and Argo CD it did not fit (EL-033), and it gets a cluster in Phase 6.
+Browsers and curl resolve `*.localhost` to `127.0.0.1` by themselves.
 
 ## CI
 

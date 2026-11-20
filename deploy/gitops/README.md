@@ -13,7 +13,7 @@ What Argo CD runs on the local cluster (ADR-0010). After a one-time
 | `apps/platform-config.yaml` | `infra/local/gateway.yaml` and `infra/local/namespaces.yaml` |
 | `apps/fleetops.yaml` | ApplicationSets: one application per environment and component |
 | `argocd/values.yaml` | the Argo CD chart's values, used by the bootstrap and by `apps/argocd.yaml` |
-| `envs/<env>/values.yaml` | what every service in that environment runs: image tag, hostname, pull secret |
+| `envs/<env>/values.yaml` | what every service in that environment runs: image tag, hostname, pull secret. `dev` runs on the local cluster; `staging` is recorded here and runs from Phase 6 (EL-033) |
 | `check-versions.sh` | CI: the platform versions here match `infra/local/versions.env` |
 
 ## Sync order

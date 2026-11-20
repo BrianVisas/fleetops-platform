@@ -62,10 +62,18 @@ fi
 
 # GHCR has no fine-grained tokens, so the token is a classic one, and the only
 # scope it may have is read:packages. Checked, not trusted.
-[ -s "$GHCR_TOKEN" ] || fail "no GHCR token. Create a classic token with only read:packages at
+save_hint="Create a classic token with only read:packages at
   https://github.com/settings/tokens/new?scopes=read:packages&description=fleetops-ghcr-pull
-and save it with: (umask 077; pbpaste > $GHCR_TOKEN)"
+copy it, and save it at a hidden prompt:
+  (umask 077; printf 'GHCR token: '; read -rs t; printf '%s' \"\$t\" > $GHCR_TOKEN; echo)"
+[ -s "$GHCR_TOKEN" ] || fail "no GHCR token. $save_hint"
 chmod 600 "$GHCR_TOKEN"
+# A classic token is one line of 40 characters starting with ghp_. Anything
+# else is a wrong paste, such as the command that was meant to save it (EL-032),
+# and fails here by name instead of later inside curl.
+if ! grep -qE '^ghp_[A-Za-z0-9]{36}$' "$GHCR_TOKEN" || [ "$(wc -l < "$GHCR_TOKEN" | tr -d ' ')" -gt 1 ]; then
+  fail "$GHCR_TOKEN does not hold a classic token (one line, ghp_ and 36 letters or digits). $save_hint"
+fi
 scopes=$(curl -sS -o /dev/null -D - -H "Authorization: Bearer $(cat "$GHCR_TOKEN")" https://api.github.com/user \
   | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: //p')
 [ "$scopes" = "read:packages" ] || fail "the GHCR token must have exactly the read:packages scope, it has: '${scopes:-none}'"
@@ -101,29 +109,29 @@ kubectl create secret generic repo-fleetops-platform -n argocd \
   | kubectl label --local -f - argocd.argoproj.io/secret-type=repository -o yaml \
   | kubectl apply -f - >/dev/null
 echo "repository: $REPO_URL with the deploy key"
-for namespace in fleetops-dev fleetops-staging; do
-  kubectl create secret docker-registry ghcr-pull -n "$namespace" \
-    --docker-server=ghcr.io \
-    --docker-username="$owner" \
-    --docker-password="$(cat "$GHCR_TOKEN")" \
-    --dry-run=client -o yaml \
-    | kubectl apply -f - >/dev/null
-  echo "ghcr-pull: in $namespace"
-done
+# One pull secret per FleetOps namespace; staging gets its own in Phase 6.
+kubectl create secret docker-registry ghcr-pull -n fleetops-dev \
+  --docker-server=ghcr.io \
+  --docker-username="$owner" \
+  --docker-password="$(cat "$GHCR_TOKEN")" \
+  --dry-run=client -o yaml \
+  | kubectl apply -f - >/dev/null
+echo "ghcr-pull: in fleetops-dev"
 
 echo "== the root application"
 kubectl apply -f deploy/gitops/root.yaml >/dev/null
 
-# Every application synced and healthy. The first sync pulls the images from
-# GHCR and starts two databases, so it takes a few minutes.
+# Every application synced and healthy: root, argocd, envoy-gateway,
+# cloudnative-pg, platform-config, and dev's database and four services. The
+# first sync pulls the images from GHCR, so it takes a few minutes.
 apps_ready() {
   kubectl get applications -n argocd \
     -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}' \
     > "${TMPDIR:-/tmp}/fleetops-apps.txt"
-  [ "$(wc -l < "${TMPDIR:-/tmp}/fleetops-apps.txt")" -ge 14 ] \
+  [ "$(wc -l < "${TMPDIR:-/tmp}/fleetops-apps.txt")" -ge 10 ] \
     && ! grep -qvE ' Synced Healthy$' "${TMPDIR:-/tmp}/fleetops-apps.txt"
 }
-echo "waiting for 14 applications to be synced and healthy (up to 20 minutes)"
+echo "waiting for 10 applications to be synced and healthy (up to 20 minutes)"
 waited=0
 until apps_ready; do
   waited=$((waited + 30))
@@ -138,13 +146,11 @@ until apps_ready; do
 done
 cat "${TMPDIR:-/tmp}/fleetops-apps.txt"
 
-echo "== checking the environments through the gateway"
-for env in dev staging; do
-  host="$env.fleetops.localhost"
-  retry 120 sh -c "curl -sf -H 'Host: $host' $GATEWAY_URL/ | grep -q '<title>FleetOps</title>'"
-  retry 120 sh -c "curl -sf -H 'Host: $host' '$GATEWAY_URL/api/v1/vehicles?size=1' | grep -q '\"content\"'"
-  echo "fleetops $env: dashboard and API answer on http://$host:8000"
-done
+echo "== checking dev and Argo CD through the gateway"
+host=dev.fleetops.localhost
+retry 120 sh -c "curl -sf -H 'Host: $host' $GATEWAY_URL/ | grep -q '<title>FleetOps</title>'"
+retry 120 sh -c "curl -sf -H 'Host: $host' '$GATEWAY_URL/api/v1/vehicles?size=1' | grep -q '\"content\"'"
+echo "fleetops dev: dashboard and API answer on http://$host:8000"
 retry 60 sh -c "curl -sf -H 'Host: argocd.fleetops.localhost' $GATEWAY_URL/ | grep -q 'Argo CD'"
 echo "argo cd: http://argocd.fleetops.localhost:8000, user admin, password from"
 echo "  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo"
