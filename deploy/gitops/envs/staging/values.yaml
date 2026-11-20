@@ -1,6 +1,7 @@
-# staging: what every service in fleetops-staging runs, on top of its own values
-# file. It runs on the local cluster until Phase 6 gives it a cloud one
-# (ADR-0010).
+# staging: what every service in fleetops-staging will run, on top of its own
+# values file. It has no cluster until Phase 6: next to dev and Argo CD it did
+# not fit on the laptop (EL-033). Promotion pull requests already change this
+# file, so the record of what staging should run starts now.
 #
 # A new image reaches staging by a pull request that copies dev's tag here
 # (`make promote`, package 5), and reverting that pull request rolls it back.

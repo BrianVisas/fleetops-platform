@@ -1,7 +1,11 @@
 # The FleetOps environments: one Application per environment and component,
-# generated from the lists below. dev gets every service including the
-# simulator, which keeps traffic flowing; staging gets the same services
-# without it. prod has its values in Phase 6, when it has a cluster.
+# generated from the lists below. On the local cluster that is dev, with every
+# service including the simulator, which keeps traffic flowing.
+#
+# staging is not on the laptop: next to dev and Argo CD it starved the node
+# and the Mac swapped (EL-033). Its values are in envs/staging, so promotion
+# pull requests work already, and Phase 6 gives it a cluster of its own, where
+# its entries come back into these lists. prod follows in Phase 6 too.
 #
 # Within an environment the components start in any order and settle: fleet-api
 # waits for the database, and telemetry-ingest restarts until fleet-api has run
@@ -24,7 +28,6 @@ spec:
     - list:
         elements:
           - env: dev
-          - env: staging
   template:
     metadata:
       name: "fleetops-{{ .env }}-postgres"
@@ -69,9 +72,6 @@ spec:
           - { env: dev, service: telemetry-ingest }
           - { env: dev, service: web-ui }
           - { env: dev, service: vehicle-sim }
-          - { env: staging, service: fleet-api }
-          - { env: staging, service: telemetry-ingest }
-          - { env: staging, service: web-ui }
   template:
     metadata:
       name: "fleetops-{{ .env }}-{{ .service }}"

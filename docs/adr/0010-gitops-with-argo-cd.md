@@ -1,6 +1,6 @@
 # ADR-0010: Argo CD runs the cluster from git, as app-of-apps
 
-- Status: accepted
+- Status: accepted, amended 2026-11-20 (staging is not on the laptop, see below)
 - Date: 2026-11-19
 
 ## Context
@@ -55,10 +55,16 @@ Argo CD (option 3), with this layout:
   - wave 1: the gateway and the namespaces from `infra/local`.
   - wave 2: FleetOps, as two ApplicationSets, one for the databases and one
     for the services, with one application per environment and component.
-- **Environments:** `dev` and `staging`, both as namespaces on the kind cluster
-  until Phase 6 gives `staging` a cloud cluster. An environment is a list entry
-  in the ApplicationSets and one values file, `deploy/gitops/envs/<env>`, with
-  its image tag and hostname.
+- **Environments:** an environment is a list entry in the ApplicationSets and
+  one values file, `deploy/gitops/envs/<env>`, with its image tag and hostname.
+  The local cluster runs `dev`. `staging` has its values file, so promotion
+  pull requests change it already, and runs from Phase 6.
+
+  The first version of this decision also ran `staging` on the kind cluster.
+  Measured on the Mac (EL-033), Argo CD with `dev` and `staging` reached 3.4 GiB
+  of the VM's 4.8 GiB while both fleet-api JVMs started, the node's CPU stayed
+  at its limit, the Mac swapped, and the API server stopped answering. So
+  `staging` waits for a cluster of its own.
 - **Versions pinned twice, checked once:** the platform charts' versions are
   in `versions.env`, which the scripts install from, and in the applications.
   `deploy/gitops/check-versions.sh` fails CI when the two differ.
@@ -75,9 +81,8 @@ Argo CD (option 3), with this layout:
   with only `read:packages`. GHCR has no fine-grained tokens. Both stay in
   `~/.config/fleetops` and in the cluster; the bootstrap checks the token's
   scope instead of trusting it.
-- Argo CD costs memory: five pods, with dex and notifications turned off.
-  `staging` costs a second database and three more services. Both are measured
-  on the Mac before this merges.
+- Argo CD costs memory and CPU: five pods, with dex and notifications turned
+  off. On the laptop that leaves room for one environment (EL-033).
 - The services in an environment start in any order and settle: fleet-api waits
   for the database, telemetry-ingest restarts until the migrations ran. The
   probes keep traffic away meanwhile. Argo CD's progressive sync could order

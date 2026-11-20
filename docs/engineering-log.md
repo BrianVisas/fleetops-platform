@@ -47,6 +47,8 @@ Every entry follows the same structure:
 | [EL-029](#el-029-a-check-that-only-passed-once) | A check that only passed once | local cluster | fixed |
 | [EL-030](#el-030-a-cache-that-held-back-security-fixes) | A cache that held back security fixes | CI, security | fixed |
 | [EL-031](#el-031-a-dependency-layer-the-cache-kept-losing) | A dependency layer the cache kept losing | CI | fixed |
+| [EL-032](#el-032-a-token-file-that-held-the-command) | A token file that held the command | local cluster | fixed |
+| [EL-033](#el-033-one-environment-too-many-for-the-laptop) | One environment too many for the laptop | local cluster | fixed |
 
 ---
 
@@ -1212,3 +1214,87 @@ outage, and misses happen for reasons you will not always find. Give the build
 what it needs in a way that does not depend on a hit, and let the cache only
 save time. And a verification line written before the result is a prediction:
 EL-030 said the Maven step stayed cached, and it had to be corrected here.
+
+## EL-032: A token file that held the command
+
+2026-11-19 · local cluster · fixed in the pull request that adds this entry
+
+**Symptom.** The first `make gitops-bootstrap` on the Mac stopped at its
+first check:
+
+```
+curl: (43) A libcurl function was given a bad argument
+gitops-bootstrap: the GHCR token must have exactly the read:packages scope, it has: 'none'
+```
+
+**Root cause.** The token file did not hold a token. It held the two commands
+meant to save it: 85 bytes on two lines, starting with `mkdi`. The README said
+to copy the token and save it with `pbpaste`, but running those commands meant
+copying them first, so the clipboard held the commands, and `pbpaste` wrote
+them into the file. The script sent the file's content as an HTTP header, and
+curl refuses a header with a line break in it, which is all error 43 said.
+
+**Fix.** The README and the script's message save the token at a hidden
+prompt (`read -rs`), so nothing goes through the clipboard after the token.
+Before using the file, the bootstrap checks that it holds one classic token,
+one line of `ghp_` and 36 letters or digits, and otherwise fails with a message
+that says so and how to save it.
+
+**Verification.** The check accepted a token of the right shape, and rejected
+the two pasted commands and a token followed by a second line. On the Mac, the
+token saved at the prompt was 40 bytes, and the bootstrap passed both token
+checks: "read:packages only, and it can read the images".
+
+**Lesson.** Instructions that depend on what is on the clipboard break as soon
+as following them changes the clipboard. And check input where it enters, with
+a message that names the problem: "the token must have exactly read:packages,
+it has: 'none'" was true and led nowhere.
+
+## EL-033: One environment too many for the laptop
+
+2026-11-20 · local cluster · fixed in the pull request that adds this entry
+
+**Symptom.** The first full `make gitops-bootstrap`, with Argo CD, `dev` and
+`staging` on the kind cluster, got 13 of its 14 applications synced and healthy
+in 11 minutes. Then the API server stopped answering (`TLS handshake timeout`),
+and applications that had been healthy fell back to Progressing, down to 6 of
+14 by the 20-minute limit. At that point the node used 3.4 GiB of the VM's
+4.8 GiB and its CPU was at its limit (517% in `docker stats`).
+
+Looked at again later, the cluster had not recovered. `kubectl` got `EOF`,
+`TLS handshake timeout` and `Forbidden: unknown` from the API server; the
+controller manager was in a restart back-off. Probes were timing out across
+the node, for coredns, etcd, Argo CD's application controller, both databases,
+web-ui and telemetry-ingest. The node's CPU was at 670%, and the Mac had 16.2
+of its 17.4 GB of swap in use.
+
+**Root cause.** Too much for the machine, and EL-028's mechanism on top.
+
+- The FleetOps services request little CPU (fleet-api 100m), so the scheduler
+  fits everything on the one node. But two fleet-api JVMs starting at once, two
+  PostgreSQL clusters initialising, and Argo CD rendering 14 applications use
+  far more than they request. With the node's CPU at its limit, probes time
+  out, pods restart and start the work over, and the API server and etcd fall
+  behind.
+- The Mac has 8 GiB and the VM 5 GiB of it. With the cluster at 3.4 GiB, page
+  cache on top, and macOS and a browser beside it, the Mac swapped the VM's
+  memory, and the VM stalls while it waits for those pages (EL-028).
+
+**Fix.** `staging` is not on the laptop. Its entries are out of the
+ApplicationSets and its namespace out of `namespaces.yaml`; its values file
+stays in `deploy/gitops/envs/staging`, so promotion pull requests from package
+5 on record what `staging` should run, and Phase 6 gives it a cluster of its
+own on AKS, where the roadmap had it anyway. ADR-0010 and `docs/PHASE4.md` are
+amended. The bootstrap waits for 10 applications and checks `dev` and Argo CD.
+
+**Verification.** Pending when this was written: Argo CD syncs from `main`, so
+the change can only be tried once it is merged. The check is a fresh cluster,
+`make gitops-bootstrap` ending with all 10 applications synced and healthy,
+the node's memory and CPU while it ran, and the Mac's swap; the numbers go
+into the next pull request.
+
+**Lesson.** PHASE4.md said to decide on measurements whether `staging` fits,
+and the measurement said no, but only on the second attempt to read it: the
+first sign, 13 of 14 healthy, looked like success. On a machine this close to
+its limit, "it got there" is not the same as "it stays there", so the check has
+to include a few minutes after the last application turns healthy.
