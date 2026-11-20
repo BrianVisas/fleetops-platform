@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.0](https://github.com/BrianVisas/fleetops-platform/compare/v0.3.0...v0.4.0) (2026-11-20)
+
+
+### Features
+
+* **deploy:** Helm chart for the FleetOps services ([#57](https://github.com/BrianVisas/fleetops-platform/issues/57)) ([41c3895](https://github.com/BrianVisas/fleetops-platform/commit/41c389502c7854ff073626c737248afd2c4e05f7))
+* **gitops:** Argo CD runs the local cluster from git ([#62](https://github.com/BrianVisas/fleetops-platform/issues/62)) ([6387ec0](https://github.com/BrianVisas/fleetops-platform/commit/6387ec06d8f8eba8e777eda55cd155e3fcdaa9ee))
+* **infra:** local kind cluster with Envoy Gateway ([#54](https://github.com/BrianVisas/fleetops-platform/issues/54)) ([e06f0fd](https://github.com/BrianVisas/fleetops-platform/commit/e06f0fd687517f10052fbf9d474784f4d10d0c32))
+* **infra:** PostgreSQL on the local cluster with CloudNativePG ([#55](https://github.com/BrianVisas/fleetops-platform/issues/55)) ([45d8c56](https://github.com/BrianVisas/fleetops-platform/commit/45d8c56f6143a2b088d068de33f1c78f1067aa6c))
+
+
+### Bug fixes
+
+* **ci:** build fleet-api's image offline from a cached Maven home ([#61](https://github.com/BrianVisas/fleetops-platform/issues/61)) ([0123d6f](https://github.com/BrianVisas/fleetops-platform/commit/0123d6f6ec23d9910729e356ae24a978fa03d09b))
+* **fleet-api:** retry the Maven download in the image build (EL-026) ([#56](https://github.com/BrianVisas/fleetops-platform/issues/56)) ([133a5a9](https://github.com/BrianVisas/fleetops-platform/commit/133a5a9d630f44cc736ea3125bb07c6043ace222))
+* **gitops:** run dev only on the laptop and check the GHCR token's format ([#63](https://github.com/BrianVisas/fleetops-platform/issues/63)) ([dd3e5ea](https://github.com/BrianVisas/fleetops-platform/commit/dd3e5ea0381282285fb5187f4e4a8e858ca11b11))
+
+
+### CI and delivery
+
+* build each image once per commit and test that build ([#59](https://github.com/BrianVisas/fleetops-platform/issues/59)) ([9a4d36c](https://github.com/BrianVisas/fleetops-platform/commit/9a4d36c15f7883cdc811c14786df4794dec7fa93))
+
+
+### Documentation
+
+* plan Phase 4 (Kubernetes and GitOps) ([#52](https://github.com/BrianVisas/fleetops-platform/issues/52)) ([e741812](https://github.com/BrianVisas/fleetops-platform/commit/e741812ee8cafb5535d8f5c6ddb5fdbdefe7efb1))
+
 ## [0.3.0](https://github.com/BrianVisas/fleetops-platform/compare/v0.2.0...v0.3.0) (2026-11-18)
 
 
