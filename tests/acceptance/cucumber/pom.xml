@@ -19,7 +19,7 @@
 		<!-- Cucumber 8 no longer ships Jackson; its html and json plugins need one.
 		     Jackson 3, the same line fleet-api uses, and the one REST Assured 6 picks
 		     up when it is the only Jackson on the classpath. -->
-		<jackson.version>3.2.4</jackson.version>
+		<jackson.version>3.3.0</jackson.version>
 	</properties>
 
 	<dependencyManagement>
